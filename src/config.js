@@ -7,6 +7,19 @@ const int = (v, dflt) => {
   return Number.isFinite(n) ? n : dflt;
 };
 
+// The Laser SDK takes one bare connection target: `token@host` or `user:pwd@host`
+// (port defaults to 8090, TLS auto-attaches for *.laserdata.cloud). The Console's
+// Credentials tab hands these out as separate fields, so assemble them if the
+// whole string isn't set.
+const laserConnectionString = () => {
+  if (process.env.LASER_CONNECTION_STRING) return process.env.LASER_CONNECTION_STRING;
+  const host = process.env.LASERDATA_DOMAIN;
+  if (!host) return "";
+  if (process.env.LASERDATA_TOKEN) return `${process.env.LASERDATA_TOKEN}@${host}`;
+  const { LASERDATA_USERNAME: user, LASERDATA_PASSWORD: pwd } = process.env;
+  return user && pwd ? `${user}:${pwd}@${host}` : "";
+};
+
 module.exports = {
   twitchChannel: process.env.TWITCH_CHANNEL || "",
   mockIngest: bool(process.env.MOCK_INGEST),
@@ -15,9 +28,9 @@ module.exports = {
   crewModel: process.env.CREW_MODEL || "claude-opus-5",
 
   laserData: {
-    apiKey: process.env.LASERDATA_API_KEY || "",
-    endpoint: process.env.LASERDATA_ENDPOINT || "",
+    connectionString: laserConnectionString(),
     stream: process.env.LASERDATA_STREAM || "humanharness-live",
+    topic: process.env.LASERDATA_TOPIC || "signals",
   },
 
   falkor: {
