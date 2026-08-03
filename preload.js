@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld("hh", {
   onLabels: (cb) => ipcRenderer.on("hh:labels", (_e, labels) => cb(labels)),
   onTranscript: (cb) => ipcRenderer.on("hh:transcript", (_e, text) => cb(text)),
   onCommentary: (cb) => ipcRenderer.on("hh:commentary", (_e, c) => cb(c)),
+  onAudio: (cb) => ipcRenderer.on("hh:audio", (_e, audio) => cb(audio)),
   onStatus: (cb) => ipcRenderer.on("hh:status", (_e, msg) => cb(msg)),
 });

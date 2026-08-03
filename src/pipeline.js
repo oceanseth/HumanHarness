@@ -5,6 +5,7 @@ const { SignalStream } = require("./signals");
 const { Memory } = require("./memory");
 const { Actions } = require("./actions");
 const { Crew } = require("./crew");
+const { Voices } = require("./voices");
 const { transcribe } = require("./stt");
 
 // The core loop: ingest -> perceive -> LaserData signals -> FalkorDB memory
@@ -27,9 +28,14 @@ class Pipeline extends EventEmitter {
     this.crew = new Crew(this.config, this.memory, this.actions);
     this.perceiver = new Perceiver(this.config);
     this.ingest = new Ingest(this.config);
+    this.voices = new Voices(this.config);
 
     const memMode = await this.memory.connect();
     this.emit("status", `memory: ${memMode}`);
+
+    // start masky conversation (graceful if no key configured)
+    this.voices.on("status", (msg) => this.emit("status", msg));
+    await this.voices.start();
 
     // signals feed both memory and the crew's working context
     this.signals.on("signal", (event) => {
@@ -74,7 +80,13 @@ class Pipeline extends EventEmitter {
     const out = await this.crew.speak(trigger);
     if (!out) return;
     if (out.error) return this.emit("status", `crew: ${out.error}`);
-    if (out.line) this.emit("commentary", out);
+    if (out.line) {
+      this.emit("commentary", out);
+      // Render audio through masky; renderer falls back to speechSynthesis if null.
+      this.voices.speak(out.persona, out.line).then((audio) => {
+        if (audio) this.emit("audio", audio);
+      });
+    }
   }
 
   setGoal(goal) {
@@ -96,6 +108,7 @@ class Pipeline extends EventEmitter {
     this.running = false;
     clearInterval(this.commentaryTimer);
     if (this.ingest) this.ingest.stop();
+    if (this.voices) this.voices.stop();
     this.emit("status", "pipeline stopped");
   }
 }

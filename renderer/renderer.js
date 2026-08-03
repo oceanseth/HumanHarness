@@ -77,7 +77,15 @@ window.hh.onTranscript((text) => append($("transcript"), `🎙 ${esc(text)}`));
 window.hh.onCommentary((c) => {
   const lookup = c.lookupResult ? `<div class="lookup">↳ ${esc(c.lookupResult.note || "")}</div>` : "";
   append($("commentary"), `<span class="who ${esc(c.persona)}">${esc(c.persona)}</span>${esc(c.line)}${lookup}`);
-  speak(c.persona, c.line);
+  // Only speak via speechSynthesis if masky is off; audio arrives via onAudio when masky is on.
+  if (!maskyVoices) speak(c.persona, c.line);
+});
+
+// masky.ai audio: play received URL (replaces speechSynthesis when masky is configured).
+window.hh.onAudio((audio) => {
+  if (!audio || !audio.audioUrl) return;
+  const a = new Audio(audio.audioUrl);
+  a.play().catch(() => {}); // autoplay may be blocked — that's fine, the liveUrl is available
 });
 
 window.hh.onStatus((msg) => append($("status"), esc(msg), 100));
