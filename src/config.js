@@ -16,8 +16,14 @@ module.exports = {
 
   laserData: {
     apiKey: process.env.LASERDATA_API_KEY || "",
+    tenantId: process.env.LASERDATA_TENANT_ID || "",
+    connectionString: process.env.LASER_CONNECTION_STRING || "",
+    domain: process.env.LASERDATA_DOMAIN || "",
+    username: process.env.LASERDATA_USERNAME || "",
+    password: process.env.LASERDATA_PASSWORD || "",
     endpoint: process.env.LASERDATA_ENDPOINT || "",
     stream: process.env.LASERDATA_STREAM || "humanharness-live",
+    topic: process.env.LASERDATA_TOPIC || "signals",
   },
 
   falkor: {
