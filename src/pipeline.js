@@ -30,6 +30,9 @@ class Pipeline extends EventEmitter {
     this.ingest = new Ingest(this.config);
     this.voices = new Voices(this.config);
 
+    const signalMode = await this.signals.connect();
+    this.emit("status", `signals: ${signalMode}`);
+
     const memMode = await this.memory.connect();
     this.emit("status", `memory: ${memMode}`);
 
@@ -109,6 +112,7 @@ class Pipeline extends EventEmitter {
     clearInterval(this.commentaryTimer);
     if (this.ingest) this.ingest.stop();
     if (this.voices) this.voices.stop();
+    if (this.signals) this.signals.close();
     this.emit("status", "pipeline stopped");
   }
 }
