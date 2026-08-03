@@ -22,6 +22,7 @@ module.exports = {
 
   falkor: {
     url: process.env.FALKORDB_URL || "",
+    connectionString: process.env.FALKORDB_CONNECTION_STRING || "",
     graph: process.env.FALKORDB_GRAPH || "humanharness",
   },
 
