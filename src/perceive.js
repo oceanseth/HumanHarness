@@ -1,28 +1,11 @@
-const Anthropic = require("@anthropic-ai/sdk");
+const { MiniMaxClient, parseJsonResponse } = require("./minimax");
 
-const LABEL_SCHEMA = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      scene: { type: "string", description: "One-line description of the scene" },
-      objects: { type: "array", items: { type: "string" } },
-      events: {
-        type: "array",
-        items: { type: "string" },
-        description: "Things happening right now that a co-caster would react to",
-      },
-    },
-    required: ["scene", "objects", "events"],
-    additionalProperties: false,
-  },
-};
-
-// Vision labeler: frame JPEG -> {scene, objects, events} via Claude.
+// Vision labeler: frame JPEG -> {scene, objects, events} via MiniMax's
+// coding-plan image-understanding endpoint.
 class Perceiver {
   constructor(config) {
     this.config = config;
-    this.client = new Anthropic();
+    this.client = new MiniMaxClient(config.minimax);
     this.busy = false;
   }
 
@@ -31,33 +14,22 @@ class Perceiver {
     if (this.busy) return null;
     this.busy = true;
     try {
-      const response = await this.client.messages.create({
-        model: this.config.visionModel,
-        max_tokens: 1024,
-        output_config: { format: LABEL_SCHEMA },
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: "image/jpeg",
-                  data: frameJpeg.toString("base64"),
-                },
-              },
-              {
-                type: "text",
-                text: "Label this live-stream frame for a real-time commentary crew. Scene, visible objects, and events happening right now.",
-              },
-            ],
-          },
-        ],
-      });
-      if (response.stop_reason === "refusal") return null;
-      const text = response.content.find((b) => b.type === "text");
-      return text ? { ...JSON.parse(text.text), ts: new Date().toISOString() } : null;
+      const text = await this.client.understandImage(
+        frameJpeg,
+        [
+          "Label this live-stream frame for a real-time commentary crew.",
+          "Return JSON only with exactly these fields:",
+          '{"scene":"one-line description","objects":["visible object"],"events":["event happening now"]}',
+          "Do not include markdown or commentary outside the JSON object.",
+        ].join(" "),
+      );
+      const labels = parseJsonResponse(text);
+      return {
+        scene: String(labels.scene || ""),
+        objects: Array.isArray(labels.objects) ? labels.objects.map(String) : [],
+        events: Array.isArray(labels.events) ? labels.events.map(String) : [],
+        ts: new Date().toISOString(),
+      };
     } catch (err) {
       return { error: err.message };
     } finally {

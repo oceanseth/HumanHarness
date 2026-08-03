@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 const bool = (v, dflt = false) =>
   v === undefined || v === "" ? dflt : /^(1|true|yes)$/i.test(v);
@@ -24,27 +24,39 @@ module.exports = {
   twitchChannel: process.env.TWITCH_CHANNEL || "",
   mockIngest: bool(process.env.MOCK_INGEST),
 
-  visionModel: process.env.VISION_MODEL || "claude-opus-5",
-  crewModel: process.env.CREW_MODEL || "claude-opus-5",
+  minimax: {
+    apiKey: process.env.MINIMAX_KEY || "",
+    apiHost: process.env.MINIMAX_API_HOST || "https://api.minimax.io",
+  },
+  crewModel: process.env.CREW_MODEL || "MiniMax-M2.7",
 
   laserData: {
     connectionString: laserConnectionString(),
     stream: process.env.LASERDATA_STREAM || "humanharness-live",
     topic: process.env.LASERDATA_TOPIC || "signals",
+    apiKey: process.env.LASERDATA_API_KEY || "",
+    tenantId: process.env.LASERDATA_TENANT_ID || "",
   },
 
   falkor: {
     url: process.env.FALKORDB_URL || "",
     connectionString: process.env.FALKORDB_CONNECTION_STRING || "",
     graph: process.env.FALKORDB_GRAPH || "humanharness",
+    password: process.env.FALKORDB_GRAPH_PASSWORD || "",
   },
 
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   rocketRideApiKey: process.env.ROCKETRIDE_API_KEY || "",
-  // RocketRide's Anthropic node has its own model list; keep it separate from
+  // RocketRide's MiniMax node has its own config; keep it separate from
   // CREW_MODEL so the two can move independently.
-  rocketRideModel: process.env.ROCKETRIDE_MODEL || "claude-sonnet-4-6",
-  guildApiKey: process.env.GUILD_API_KEY || "",
+  rocketRideModel: process.env.ROCKETRIDE_MODEL || "MiniMax-M2.7",
+  guild: {
+    apiKey: process.env.GUILD_API_KEY || "",
+    owner: process.env.GUILD_WORKSPACE_OWNER || "",
+    workspace: process.env.GUILD_WORKSPACE || "",
+    baseUrl: process.env.GUILD_BASE_URL || "https://app.guild.ai",
+    timeoutMs: int(process.env.GUILD_TIMEOUT_MS, 60000),
+    pollIntervalMs: int(process.env.GUILD_POLL_INTERVAL_MS, 1000),
+  },
   maskyApiKey: process.env.MASKY_API_KEY || "",
   maskyAvatarId: process.env.MASKY_AVATAR_ID || "",
   maskyAvatarOwnerUserId: process.env.MASKY_AVATAR_OWNER_USER_ID || "",

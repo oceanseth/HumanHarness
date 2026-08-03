@@ -84,7 +84,7 @@ The MVP is an **Electron app**: the main process runs the whole pipeline (ingest
 - Node.js 22+
 - [ffmpeg](https://ffmpeg.org/) and [streamlink](https://streamlink.github.io/) on PATH (not needed in demo mode)
 - Docker (for FalkorDB — optional; an in-memory graph is used as fallback)
-- `ANTHROPIC_API_KEY` (vision labeling + persona crew)
+- `MINIMAX_KEY` from a MiniMax Token Plan (vision labeling + persona crew)
 - Optional API keys: LaserData, RocketRide.ai, Guild.ai, masky.ai, and an STT provider (Deepgram or OpenAI Whisper). Every sponsor integration has a local fallback so the loop runs without them.
 
 ### 1. Clone & install
@@ -118,7 +118,7 @@ Copy `.env.example` to `.env` and fill in what you have. The two that matter mos
 
 ```ini
 TWITCH_CHANNEL=your_channel_name
-ANTHROPIC_API_KEY=sk-ant-...
+MINIMAX_KEY=sk-cp-...
 ```
 
 Set `MOCK_INGEST=true` to demo the full crew loop with scripted scene labels — no stream, no streamlink/ffmpeg.
@@ -128,9 +128,25 @@ The sponsor services each need one more line, and each has a fallback if you ski
 ```ini
 LASER_CONNECTION_STRING=<token>@<deployment>.laserdata.cloud   # or LASERDATA_DOMAIN + user/password
 FALKORDB_URL=redis://localhost:6379                            # or a managed instance
-ROCKETRIDE_API_KEY=rr_...                                      # Scout lookups; also uses ANTHROPIC_API_KEY
+ROCKETRIDE_API_KEY=rr_...                                      # Scout lookups; also uses MINIMAX_KEY
 MASKY_API_KEY=mky_...                                          # plus MASKY_AVATAR_ID and MASKY_AVATAR_OWNER_USER_ID
 ```
+
+Guild routing uses an [API trigger](https://docs.guild.ai/platform/triggers#api-triggers).
+Create and publish the agent in `guild-agent/`, install it in a workspace, create
+an API trigger for it, then configure the combined trigger credentials and the
+workspace URL slugs:
+
+```ini
+GUILD_API_KEY=<api_key_id>:<api_key_secret>
+GUILD_WORKSPACE_OWNER=<owner_name>
+GUILD_WORKSPACE=<workspace_name>
+```
+
+The Agent SDK stays inside Guild's runtime; Electron calls only the documented
+sessions/events HTTP API. Guild deterministically selects the persona, then
+MiniMax writes that persona's line locally. If Guild is missing, misconfigured,
+unavailable, or times out, MiniMax also selects the persona for that turn.
 
 ### 4. Run
 
@@ -138,7 +154,7 @@ MASKY_API_KEY=mky_...                                          # plus MASKY_AVAT
 npm start
 ```
 
-Hit **Start** in the window. The main process spawns streamlink/ffmpeg (frame grabs every 500 ms → Claude vision labeler → LaserData signal stream; audio → STT), folds labels into the FalkorDB graph, and every few seconds the Guild-routed crew picks a persona to speak — voiced through masky.ai when a key is present, browser speechSynthesis otherwise. Type in the "talk to the crew" box (or speak, with STT configured) and set a goal — the personas optimize their commentary and lookups around it.
+Hit **Start** in the window. The main process spawns streamlink/ffmpeg (frame grabs every 500 ms → MiniMax image understanding → LaserData signal stream; audio → STT), folds labels into the FalkorDB graph, and every few seconds the Guild-routed crew picks a persona to speak — voiced through masky.ai when a key is present, browser speechSynthesis otherwise. Type in the "talk to the crew" box (or speak, with STT configured) and set a goal — the personas optimize their commentary and lookups around it.
 
 ### Deterministic moment replay
 
@@ -161,17 +177,19 @@ src/
   config.js       # .env loading + defaults
   pipeline.js     # the core loop, wires everything below together
   ingest.js       # streamlink + ffmpeg: 500ms frame grabs + audio segments (+ mock mode)
-  perceive.js     # frame labeler (Claude vision → structured labels)
+  perceive.js     # frame labeler (MiniMax vision → structured labels)
   stt.js          # Deepgram / Whisper transcription
   signals.js      # LaserData publisher (local event bus fallback)
   memory.js       # FalkorDB graph writer/reader (in-memory fallback)
   actions.js      # RocketRide.ai orchestration (mock fallback)
+  guild.js        # Guild API-trigger client (local MiniMax fallback in crew.js)
   crew.js         # Guild routing + persona prompts + masky.ai voices
   moments.js      # provider-neutral moment contracts + runtime validation
   replay.js       # deterministic offline JSONL replay
 bin/
   humanharness.js # Node CLI for replaying recorded moments
 test/             # contract, replay, CLI tests + boss-fight fixture
+guild-agent/      # TypeScript agent deployed into Guild's runtime
 .env.example
 ```
 

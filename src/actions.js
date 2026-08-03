@@ -2,7 +2,7 @@
 // into external actions (wiki lookups, map queries, strategy tools).
 //
 // The Scout's lookups run as a RocketRide pipeline on RocketRide Cloud:
-// webhook source -> Scout prompt -> Claude -> answers. connect() starts the
+// webhook source -> Scout prompt -> MiniMax -> answers. connect() starts the
 // pipeline once and holds the task token; each lookup is one send() into it.
 // Without a RocketRide key this stays a mock that records the intent and
 // returns nothing, so the crew still runs but performs no external calls.
@@ -15,9 +15,9 @@ const SCOUT_PROMPT = [
   "If you do not know, say so in one sentence rather than guessing.",
 ].join(" ");
 
-// The Anthropic node wants its key inline — RocketRide only substitutes
+// The MiniMax node wants its key inline — RocketRide only substitutes
 // ${ROCKETRIDE_*} placeholders, so nothing else reaches the engine from .env.
-const lookupPipeline = (model, apikey) => ({
+const lookupPipeline = (model, apikey, serverbase) => ({
   project_id: "humanharness-lookup",
   source: "source_1",
   components: [
@@ -30,8 +30,17 @@ const lookupPipeline = (model, apikey) => ({
     },
     {
       id: "llm_1",
-      provider: "llm_anthropic",
-      config: { profile: "custom", custom: { model, modelTotalTokens: 200000, apikey } },
+      provider: "llm_minimax",
+      config: {
+        profile: "custom",
+        custom: {
+          model,
+          modelTotalTokens: 204800,
+          modelOutputTokens: 2048,
+          serverbase,
+          apikey,
+        },
+      },
       input: [{ from: "prompt_1", lane: "questions" }],
     },
     {
@@ -56,7 +65,8 @@ const withTimeout = (promise, ms, what) => {
 class Actions {
   constructor(config) {
     this.apiKey = config.rocketRideApiKey;
-    this.anthropicApiKey = config.anthropicApiKey;
+    this.minimaxApiKey = config.minimax.apiKey;
+    this.minimaxBaseUrl = `${config.minimax.apiHost.replace(/\/+$/, "")}/v1`;
     this.model = config.rocketRideModel;
     this.log = [];
     this.client = null;
@@ -68,8 +78,8 @@ class Actions {
   // Startup never depends on RocketRide; the mock always serves.
   async connect() {
     if (!this.apiKey) return this.mode;
-    if (!this.anthropicApiKey) {
-      this.mode = "mock (RocketRide key set but ANTHROPIC_API_KEY is not — the lookup pipeline needs it)";
+    if (!this.minimaxApiKey) {
+      this.mode = "mock (RocketRide key set but MINIMAX_KEY is not — the lookup pipeline needs it)";
       return this.mode;
     }
 
@@ -78,7 +88,8 @@ class Actions {
       const client = new RocketRideClient({ auth: this.apiKey, uri: CONST_DEFAULT_WEB_CLOUD });
       await client.connect();
       const started = await client.use({
-        pipeline: lookupPipeline(this.model, this.anthropicApiKey),
+        pipeline: lookupPipeline(this.model, this.minimaxApiKey, this.minimaxBaseUrl),
+        useExisting: true,
         ttl: 0,
       });
       const token = started.token || (started.pipeline && started.pipeline.token);
