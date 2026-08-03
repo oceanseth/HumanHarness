@@ -1,0 +1,18 @@
+{
+  "name": "humanharness",
+  "version": "0.1.0",
+  "description": "Your feed. Your goals. Their commentary. A crew of AI personas riding a live video feed.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "dotenv": "^17.4.2",
+    "falkordb": "^6.7.0"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0"
+  }
+}
