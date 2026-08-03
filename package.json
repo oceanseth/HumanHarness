@@ -3,8 +3,13 @@
   "version": "0.1.0",
   "description": "Your feed. Your goals. Their commentary. A crew of AI personas riding a live video feed.",
   "main": "main.js",
+  "bin": {
+    "humanharness": "bin/humanharness.js"
+  },
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test": "node --test",
+    "replay": "node ./bin/humanharness.js replay"
   },
   "license": "MIT",
   "dependencies": {
