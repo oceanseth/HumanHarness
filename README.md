@@ -108,6 +108,16 @@ FRAME_INTERVAL_MS=500
 python -m humanharness run --channel $TWITCH_CHANNEL
 ```
 
+Replay an offline, provider-neutral JSONL fixture through the mock pipeline:
+
+```bash
+python -m humanharness run --mock tests/fixtures/boss-fight.jsonl
+```
+
+Each line in a replay fixture is a `Moment` contract. The mock policy selects
+the highest-priority `PersonaProposal`, emits a `CommentaryDecision`, and
+collects its `ActionRequest` records without calling any vendor service.
+
 The bootstrap command validates the typed `.env` configuration and reports the
 stream settings it will use. The ingest, memory, and crew workers will attach
 to this entry point as the MVP is built out.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .config import Settings
+from .replay import replay
 
 
 def run(settings: Settings) -> str:
@@ -16,4 +17,15 @@ def run(settings: Settings) -> str:
     return (
         "HumanHarness bootstrap started "
         f"(channel: {channel}; frame interval: {settings.frame_interval_ms} ms)."
+    )
+
+
+def run_mock_replay(fixture_path: str) -> str:
+    """Run the local deterministic replay mode and report its output counts."""
+
+    result = replay(fixture_path)
+    return (
+        "Mock replay completed "
+        f"({len(result.moments)} moments; {len(result.commentary_decisions)} commentary decisions; "
+        f"{len(result.action_requests)} action requests)."
     )
