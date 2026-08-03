@@ -28,6 +28,8 @@ module.exports = {
   rocketRideApiKey: process.env.ROCKETRIDE_API_KEY || "",
   guildApiKey: process.env.GUILD_API_KEY || "",
   maskyApiKey: process.env.MASKY_API_KEY || "",
+  maskyAvatarId: process.env.MASKY_AVATAR_ID || "",
+  maskyAvatarOwnerUserId: process.env.MASKY_AVATAR_OWNER_USER_ID || "",
 
   stt: {
     provider: (process.env.STT_PROVIDER || "none").toLowerCase(),

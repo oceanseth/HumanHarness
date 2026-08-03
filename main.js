@@ -32,6 +32,7 @@ app.whenReady().then(() => {
   pipeline.on("labels", (labels) => send("hh:labels", labels));
   pipeline.on("transcript", (text) => send("hh:transcript", text));
   pipeline.on("commentary", (c) => send("hh:commentary", c));
+  pipeline.on("audio", (audio) => send("hh:audio", audio));
   pipeline.on("status", (msg) => send("hh:status", msg));
 
   ipcMain.handle("hh:start", () => pipeline.start());
@@ -42,7 +43,7 @@ app.whenReady().then(() => {
     twitchChannel: config.twitchChannel,
     mockIngest: config.mockIngest,
     sttProvider: config.stt.provider,
-    maskyVoices: Boolean(config.maskyApiKey),
+    maskyVoices: Boolean(config.maskyApiKey && config.maskyAvatarId && config.maskyAvatarOwnerUserId),
   }));
 });
 
