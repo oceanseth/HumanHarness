@@ -16,6 +16,7 @@ module.exports = {
 
   laserData: {
     apiKey: process.env.LASERDATA_API_KEY || "",
+    tenantId: process.env.LASERDATA_TENANT_ID || "",
     endpoint: process.env.LASERDATA_ENDPOINT || "",
     stream: process.env.LASERDATA_STREAM || "humanharness-live",
   },
