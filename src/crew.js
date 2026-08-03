@@ -1,7 +1,7 @@
-const Anthropic = require("@anthropic-ai/sdk");
+const { MiniMaxClient, responseText } = require("./minimax");
 
 // Guild.ai collaboration layer: routes each moment to the right persona and
-// produces their line. Locally this is one Claude call that picks the persona
+// produces their line. Locally this is one MiniMax call that picks the persona
 // and writes the commentary; with a GUILD_API_KEY the same decision would be
 // delegated to Guild's router (TODO once endpoint docs are in hand).
 // Voices are masky.ai personas; without a key the renderer speaks lines with
@@ -41,7 +41,10 @@ class Crew {
     this.config = config;
     this.memory = memory;
     this.actions = actions;
-    this.client = new Anthropic();
+    this.client = new MiniMaxClient({
+      apiKey: config.minimaxApiKey,
+      groupId: config.minimaxGroupId,
+    });
     this.goal = "";
     this.recentSignals = [];
     this.busy = false;
@@ -80,17 +83,20 @@ class Crew {
         trigger === "tick" ? "React to the current moment." : `The human just said: "${trigger}". Respond to them.`,
       ].join("\n\n");
 
-      const response = await this.client.messages.create({
+      const response = await this.client.createChatCompletion({
         model: this.config.crewModel,
         max_tokens: 1024,
-        output_config: { format: CREW_SCHEMA },
-        system,
-        messages: [{ role: "user", content: user }],
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: `${user}\n\nReturn only JSON matching this schema: ${JSON.stringify(CREW_SCHEMA.schema)}`,
+          },
+        ],
       });
-      if (response.stop_reason === "refusal") return null;
-      const text = response.content.find((b) => b.type === "text");
+      const text = responseText(response);
       if (!text) return null;
-      const out = JSON.parse(text.text);
+      const out = JSON.parse(text);
 
       for (const fact of out.remember || []) {
         await this.memory.record({ scene: fact, objects: [], events: [fact], ts: new Date().toISOString() });

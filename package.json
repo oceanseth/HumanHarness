@@ -9,7 +9,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.115.0",
     "@laserdata/laser-sdk": "^0.0.2",
     "dotenv": "^17.4.2",
     "falkordb": "^6.7.0"

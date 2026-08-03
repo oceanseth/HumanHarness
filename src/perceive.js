@@ -1,4 +1,4 @@
-const Anthropic = require("@anthropic-ai/sdk");
+const { MiniMaxClient, responseText } = require("./minimax");
 
 const LABEL_SCHEMA = {
   type: "json_schema",
@@ -18,11 +18,14 @@ const LABEL_SCHEMA = {
   },
 };
 
-// Vision labeler: frame JPEG -> {scene, objects, events} via Claude.
+// Vision labeler: frame JPEG -> {scene, objects, events} via MiniMax.
 class Perceiver {
   constructor(config) {
     this.config = config;
-    this.client = new Anthropic();
+    this.client = new MiniMaxClient({
+      apiKey: config.minimaxApiKey,
+      groupId: config.minimaxGroupId,
+    });
     this.busy = false;
   }
 
@@ -31,33 +34,27 @@ class Perceiver {
     if (this.busy) return null;
     this.busy = true;
     try {
-      const response = await this.client.messages.create({
+      const response = await this.client.createChatCompletion({
         model: this.config.visionModel,
         max_tokens: 1024,
-        output_config: { format: LABEL_SCHEMA },
         messages: [
           {
             role: "user",
             content: [
               {
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: "image/jpeg",
-                  data: frameJpeg.toString("base64"),
-                },
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${frameJpeg.toString("base64")}` },
               },
               {
                 type: "text",
-                text: "Label this live-stream frame for a real-time commentary crew. Scene, visible objects, and events happening right now.",
+                text: "Label this live-stream frame for a real-time commentary crew. Scene, visible objects, and events happening right now. Return only JSON matching this schema: " + JSON.stringify(LABEL_SCHEMA.schema),
               },
             ],
           },
         ],
       });
-      if (response.stop_reason === "refusal") return null;
-      const text = response.content.find((b) => b.type === "text");
-      return text ? { ...JSON.parse(text.text), ts: new Date().toISOString() } : null;
+      const text = responseText(response);
+      return text ? { ...JSON.parse(text), ts: new Date().toISOString() } : null;
     } catch (err) {
       return { error: err.message };
     } finally {

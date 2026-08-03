@@ -24,8 +24,10 @@ module.exports = {
   twitchChannel: process.env.TWITCH_CHANNEL || "",
   mockIngest: bool(process.env.MOCK_INGEST),
 
-  visionModel: process.env.VISION_MODEL || "claude-opus-5",
-  crewModel: process.env.CREW_MODEL || "claude-opus-5",
+  minimaxApiKey: process.env.MINIMAX_API_KEY || "",
+  minimaxGroupId: process.env.MINIMAX_GROUP_ID || "",
+  visionModel: process.env.VISION_MODEL || "abab6.5t-chat",
+  crewModel: process.env.CREW_MODEL || "abab6.5t-chat",
 
   laserData: {
     connectionString: laserConnectionString(),
