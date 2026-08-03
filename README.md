@@ -108,13 +108,21 @@ FRAME_INTERVAL_MS=500
 python -m humanharness run --channel $TWITCH_CHANNEL
 ```
 
-This starts three processes:
+The bootstrap command validates the typed `.env` configuration and reports the
+stream settings it will use. The ingest, memory, and crew workers will attach
+to this entry point as the MVP is built out.
+
+The completed MVP will start three processes:
 
 - **ingest** — streamlink/ffmpeg pipeline: 500 ms frame grabs → labeler → LaserData; audio → STT → LaserData
 - **memory** — LaserData consumer → FalkorDB graph writer
 - **crew** — Guild.ai session hosting the four personas, with RocketRide.ai as the action layer and masky.ai for voices
 
-Then just talk — your mic/stream audio is transcribed and the crew hears you. Set a goal out loud ("help me beat this boss without healing items") and the personas will optimize their commentary and actions around it.
+For now, this bootstrap command validates configuration and establishes the CLI
+boundary for those workers. Once the workers are connected, you can just talk —
+your mic/stream audio is transcribed and the crew hears you. Set a goal out loud
+("help me beat this boss without healing items") and the personas will optimize
+their commentary and actions around it.
 
 ## Repo layout
 
