@@ -4,6 +4,14 @@
 
 > HumanHarness gives every person a live team of AI experts that watch what they see, discuss it together, and help them achieve their goals in real time.
 
+<p align="center">
+  <a href="https://youtu.be/5OYzcYGDgJc">
+    <img src="docs/video-poster.jpg" alt="HumanHarness — 1-minute hackathon video" width="480" />
+  </a>
+  <br />
+  <a href="https://youtu.be/5OYzcYGDgJc">▶ Watch the 1-minute video</a>
+</p>
+
 HumanHarness is a real-time human–AI collaboration platform: multiple AI agents watch the same live video feed as a human, discuss what they observe, and provide guidance, analysis, and ideas through distinct personalities and areas of expertise. The name is the point — like a team of horses pulling in harness, except here the human is guiding a team of specialized AI minds. The human is not being replaced but **amplified**: the human is the source of intent and agency; the AI collective provides leverage, not control.
 
 Powered by [masky.ai](https://masky.ai) personalities and voices, every agent has a unique perspective, expertise, and communication style — so it feels less like asking a chatbot questions and more like collaborating with an expert team that's always looking over your shoulder. Agents debate strategies, surface relevant information, anticipate problems, and communicate naturally with each other and with you, optimized toward whatever goal you choose.
