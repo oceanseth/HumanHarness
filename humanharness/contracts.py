@@ -9,9 +9,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class Contract(BaseModel):
-    """Base contract that rejects provider-specific, accidental fields."""
+    """Base contract with portable provenance and strict fields."""
 
     model_config = ConfigDict(extra="forbid")
+
+    provenance_id: str
+    parent_provenance_id: str | None = None
+    root_event_id: str
+    source_actor: str = "humanharness"
+    context_hashes: list[str] = Field(default_factory=list)
 
 
 class MemoryReference(Contract):

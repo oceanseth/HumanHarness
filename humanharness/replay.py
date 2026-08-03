@@ -6,7 +6,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from .contracts import ActionRequest, CommentaryDecision, Moment, PersonaProposal
+from .contracts import ActionRequest, CommentaryDecision, Moment
+from .crew.client import GuildClient
 
 
 class ReplayError(ValueError):
@@ -45,15 +46,7 @@ def load_moments(path: str | Path) -> list[Moment]:
 def choose_commentary(moment: Moment) -> CommentaryDecision | None:
     """Apply the mock policy: highest priority proposal wins, then source order."""
 
-    if not moment.persona_proposals:
-        return None
-    proposal: PersonaProposal = max(moment.persona_proposals, key=lambda item: item.priority)
-    return CommentaryDecision(
-        moment_id=moment.moment_id,
-        persona_id=proposal.persona_id,
-        commentary=proposal.commentary,
-        reason="mock replay selected the highest-priority proposal",
-    )
+    return GuildClient().decide_commentary(moment)
 
 
 def replay(path: str | Path) -> ReplayResult:
