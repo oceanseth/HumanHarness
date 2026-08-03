@@ -2,7 +2,6 @@
 // them, persisted across sessions. Falls back to an in-process graph when
 // FalkorDB is unreachable, so the loop always runs.
 //
-// Uses the managed cloud instance via rediss:// (TLS) connection string.
 // Connects with a 10s timeout — the instance may be provisioning, sleeping
 // (free tier: stops after 1 day idle, deleted after 7), or unavailable.
 // Startup never depends on FalkorDB; the in-memory fallback always serves.
@@ -43,30 +42,24 @@ class Memory {
   // pipeline startup is never blocked by a provisioning or sleeping instance.
   // Returns a status string for the UI log.
   async connect() {
-    if (!this.config.url && !this.config.connectionString) return this.mode;
-
-    // Support both FALKORDB_URL (compact) and FALKORDB_CONNECTION_STRING.
-    const url = this.config.url || this.config.connectionString || "";
-    if (!url) return this.mode;
+    if (!this.config.url) return this.mode;
 
     let host = "unknown";
-    try {
-      host = new URL(url).hostname;
-    } catch {
-      // rediss:// sometimes confuses the URL parser; extract manually
-      const m = url.match(/@([^:/]+)/);
-      if (m) host = m[1];
-    }
+    try { host = new URL(this.config.url).hostname; } catch {}
 
     try {
       const { FalkorDB } = require("falkordb");
 
-      const connect = FalkorDB.connect({ url });
+      const connect = FalkorDB.connect({ url: this.config.url });
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("connection timed out (instance may be provisioning or sleeping)")), CONNECT_TIMEOUT_MS),
       );
 
-      const db = await Promise.race([connect, timeout]);
+      // Losing the race must not leak the client: close it if it lands late.
+      const racing = Promise.race([connect, timeout]);
+      racing.catch(() => connect.then((db) => db.close()).catch(() => {}));
+
+      const db = await racing;
       this.graph = db.selectGraph(this.config.graph);
 
       await this.graph.query("RETURN 1");
