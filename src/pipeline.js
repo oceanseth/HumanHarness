@@ -36,6 +36,9 @@ class Pipeline extends EventEmitter {
     const memMode = await this.memory.connect();
     this.emit("status", `memory: ${memMode}`);
 
+    const actionMode = await this.actions.connect();
+    this.emit("status", `actions: ${actionMode}`);
+
     // start masky conversation (graceful if no key configured)
     this.voices.on("status", (msg) => this.emit("status", msg));
     await this.voices.start();
@@ -113,6 +116,7 @@ class Pipeline extends EventEmitter {
     if (this.ingest) this.ingest.stop();
     if (this.voices) this.voices.stop();
     if (this.signals) this.signals.close();
+    if (this.actions) this.actions.stop();
     this.emit("status", "pipeline stopped");
   }
 }

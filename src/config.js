@@ -39,7 +39,11 @@ module.exports = {
     graph: process.env.FALKORDB_GRAPH || "humanharness",
   },
 
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   rocketRideApiKey: process.env.ROCKETRIDE_API_KEY || "",
+  // RocketRide's Anthropic node has its own model list; keep it separate from
+  // CREW_MODEL so the two can move independently.
+  rocketRideModel: process.env.ROCKETRIDE_MODEL || "claude-sonnet-4-6",
   guildApiKey: process.env.GUILD_API_KEY || "",
   maskyApiKey: process.env.MASKY_API_KEY || "",
   maskyAvatarId: process.env.MASKY_AVATAR_ID || "",

@@ -97,11 +97,20 @@ npm install
 
 ### 2. Start FalkorDB (optional)
 
+Locally:
+
 ```bash
 docker run -d --name humanharness-memory -p 6379:6379 falkordb/falkordb
 ```
 
-If it's not running, memory falls back to an in-process graph automatically.
+Or point `FALKORDB_URL` at a managed FalkorDB Cloud instance. Use the scheme the
+instance actually serves — `rediss://` only if it terminates TLS on that port,
+`redis://` otherwise. A `rediss://` URL against a plaintext port looks exactly
+like an unreachable instance: the connection times out and memory silently falls
+back.
+
+Either way, if it's not reachable, memory falls back to an in-process graph
+automatically and startup is never blocked.
 
 ### 3. Configure
 
@@ -113,6 +122,15 @@ ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 Set `MOCK_INGEST=true` to demo the full crew loop with scripted scene labels — no stream, no streamlink/ffmpeg.
+
+The sponsor services each need one more line, and each has a fallback if you skip it:
+
+```ini
+LASER_CONNECTION_STRING=<token>@<deployment>.laserdata.cloud   # or LASERDATA_DOMAIN + user/password
+FALKORDB_URL=redis://localhost:6379                            # or a managed instance
+ROCKETRIDE_API_KEY=rr_...                                      # Scout lookups; also uses ANTHROPIC_API_KEY
+MASKY_API_KEY=mky_...                                          # plus MASKY_AVATAR_ID and MASKY_AVATAR_OWNER_USER_ID
+```
 
 ### 4. Run
 
