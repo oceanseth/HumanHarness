@@ -17,7 +17,7 @@ def run(settings: Settings) -> str:
     if settings.guild_api_key or settings.guild_endpoint:
         GuildClient(
             mode="json-rpc",
-            api_key=settings.guild_api_key,
+            api_key=settings.guild_api_key or None,
             endpoint=settings.guild_endpoint,
         )
     else:

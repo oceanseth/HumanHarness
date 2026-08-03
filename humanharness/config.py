@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     guild_api_key: str | None = None
     guild_endpoint: str | None = None
     masky_api_key: str | None = None
-    stt_provider: Literal["whisper", "deepgram"] = "whisper"
+    stt_provider: Literal["whisper", "deepgram", "none"] = "none"
     openai_api_key: str | None = None
     deepgram_api_key: str | None = None
     frame_interval_ms: int = Field(default=500, gt=0)
