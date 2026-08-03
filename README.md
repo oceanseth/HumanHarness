@@ -140,6 +140,17 @@ npm start
 
 Hit **Start** in the window. The main process spawns streamlink/ffmpeg (frame grabs every 500 ms → Claude vision labeler → LaserData signal stream; audio → STT), folds labels into the FalkorDB graph, and every few seconds the Guild-routed crew picks a persona to speak — voiced through masky.ai when a key is present, browser speechSynthesis otherwise. Type in the "talk to the crew" box (or speak, with STT configured) and set a goal — the personas optimize their commentary and lookups around it.
 
+### Deterministic moment replay
+
+Recorded moments use the same Node.js runtime as the Electron app and model the data exchanged by ingest, memory, action, and persona adapters. Replay is fully offline: it makes no sponsor API calls, picks the highest-priority persona proposal (source order breaks ties), and collects action requests.
+
+```bash
+npm test
+npm run replay -- test/fixtures/boss-fight.jsonl
+```
+
+The boss-fight fixture replays 3 moments into 2 commentary decisions and 1 action request. Unknown contract fields, invalid nested values, and timestamps without a timezone fail with the JSONL line number.
+
 ## Repo layout
 
 ```
@@ -156,6 +167,11 @@ src/
   memory.js       # FalkorDB graph writer/reader (in-memory fallback)
   actions.js      # RocketRide.ai orchestration (mock fallback)
   crew.js         # Guild routing + persona prompts + masky.ai voices
+  moments.js      # provider-neutral moment contracts + runtime validation
+  replay.js       # deterministic offline JSONL replay
+bin/
+  humanharness.js # Node CLI for replaying recorded moments
+test/             # contract, replay, CLI tests + boss-fight fixture
 .env.example
 ```
 
