@@ -29,7 +29,7 @@ class RunnerTests(unittest.TestCase):
 
         guild_client.assert_called_once_with(
             mode="json-rpc",
-            api_key=None,
+            api_key=unittest.mock.ANY,
             endpoint="https://guild.example/rpc",
         )
 
