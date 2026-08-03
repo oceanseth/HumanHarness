@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     falkordb_graph: str = "humanharness"
     rocketride_api_key: str | None = None
     guild_api_key: str | None = None
+    guild_endpoint: str | None = None
     masky_api_key: str | None = None
     stt_provider: Literal["whisper", "deepgram"] = "whisper"
     openai_api_key: str | None = None
