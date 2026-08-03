@@ -28,7 +28,7 @@ const parseMemoryReference = (input, path) => {
   assertExactKeys(input, new Set(["memoryId", "summary", "relevance"]), path);
   assertString(input.memoryId, `${path}.memoryId`);
   assertString(input.summary, `${path}.summary`);
-  if (typeof input.relevance !== "number" || input.relevance < 0 || input.relevance > 1) {
+  if (!Number.isFinite(input.relevance) || input.relevance < 0 || input.relevance > 1) {
     throw new ContractError(`${path}.relevance must be a number from 0 to 1`);
   }
   return { memoryId: input.memoryId, summary: input.summary, relevance: input.relevance };

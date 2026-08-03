@@ -49,3 +49,14 @@ test("parseMoment validates nested relevance and priority", () => {
     /priority must be a non-negative integer/,
   );
 });
+
+test("parseMoment rejects non-finite memory relevance", () => {
+  assert.throws(
+    () =>
+      parseMoment({
+        ...validMoment(),
+        memoryReferences: [{ memoryId: "memory-1", summary: "Past event", relevance: NaN }],
+      }),
+    /relevance must be a number from 0 to 1/,
+  );
+});
