@@ -115,9 +115,16 @@ class GuildClient:
         if not isinstance(result, Mapping):
             raise GuildClientError("Guild JSON-RPC response is missing an object result.")
         try:
-            return CommentaryDecision.model_validate(result)
+            decision = CommentaryDecision.model_validate(result)
         except ValidationError as error:
             raise GuildClientError(f"Guild JSON-RPC returned an invalid decision: {error}") from error
+        if decision.root_event_id != moment.root_event_id:
+            raise GuildClientError("Guild JSON-RPC decision must preserve the moment root_event_id.")
+        proposal_provenance_ids = {proposal.provenance_id for proposal in moment.persona_proposals}
+        valid_parents = proposal_provenance_ids | {moment.provenance_id}
+        if decision.parent_provenance_id not in valid_parents:
+            raise GuildClientError("Guild JSON-RPC decision must name the moment or one of its proposals as parent.")
+        return decision
 
     @staticmethod
     def _provenance_headers(moment: Moment) -> dict[str, Any]:

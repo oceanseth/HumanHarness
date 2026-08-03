@@ -74,14 +74,31 @@ class GuildClientTests(unittest.TestCase):
         params = requests[0]["params"]
         assert isinstance(params, dict)
         self.assertEqual(params["moment"]["provenance_id"], "moment-prov")
-        self.assertEqual(params["provenance"]["provenance_id"], "moment-prov")
         self.assertEqual(params["provenance"]["root_event_id"], "event-root")
+        self.assertEqual(params["provenance"]["provenance_id"], "moment-prov")
 
     def test_json_rpc_error_is_reported(self) -> None:
         client = GuildClient(mode="json-rpc", transport=lambda _: {"error": {"code": -1, "message": "unavailable"}})
 
         with self.assertRaisesRegex(GuildClientError, "unavailable"):
             client.decide_commentary(moment_with_proposals())
+
+    def test_json_rpc_rejects_a_decision_from_another_root_event(self) -> None:
+        def transport(_: dict[str, object]) -> dict[str, object]:
+            return {
+                "result": {
+                    "provenance_id": "decision-prov",
+                    "parent_provenance_id": "high-prov",
+                    "root_event_id": "other-event",
+                    "moment_id": "moment-1",
+                    "persona_id": "strategist",
+                    "commentary": "Dodge left.",
+                    "reason": "remote policy",
+                }
+            }
+
+        with self.assertRaisesRegex(GuildClientError, "root_event_id"):
+            GuildClient(mode="json-rpc", transport=transport).decide_commentary(moment_with_proposals())
 
 
 if __name__ == "__main__":
