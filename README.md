@@ -140,6 +140,10 @@ requirements.txt
 | **Hype-caster** | Color commentary, energy, celebration |
 | **Scout** | What's ahead — pulls lookups via RocketRide (maps, wikis, schedules) before you get there |
 
+## Open Session
+
+This repo is built under the [Open Session License](./OPEN-SESSION-LICENSE.md): every human and model turn that shapes it is appended verbatim to [`llm-turn-history.jsonl`](./llm-turn-history.jsonl) — append-only, never loaded as machine context. Watch the sessions live at [opensession.groupnetwork.com](https://opensession.groupnetwork.com). Code is MIT (see [`LICENSE`](./LICENSE)); the session-transparency conditions ride along.
+
 ## Hackathon notes
 
 All four sponsor technologies are load-bearing: LaserData is the only path signals enter the system, FalkorDB is the only store agents read memory from, RocketRide.ai executes every external action, and Guild.ai owns all agent routing. Pull any one out and the loop breaks.
