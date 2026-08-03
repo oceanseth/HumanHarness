@@ -1,10 +1,23 @@
 # HumanHarness
 
-**Your feed. Your goals. Their commentary.**
+**One human. Many minds. Shared vision.**
 
-HumanHarness straps a crew of AI personalities onto a live video feed. You set the goal; distinct [masky.ai](https://masky.ai) personas — each with their own voice and character — watch the feed in real time, banter with each other and with you, and deliver commentary, strategy, and insight the moment it's useful. The human is always the one in the harness driving; the agents pull alongside.
+> HumanHarness gives every person a live team of AI experts that watch what they see, discuss it together, and help them achieve their goals in real time.
 
-Use cases: co-casters coaching you through a boss fight, a pocket tour guide narrating a city walk, a pit crew talking you through any live task.
+HumanHarness is a real-time human–AI collaboration platform: multiple AI agents watch the same live video feed as a human, discuss what they observe, and provide guidance, analysis, and ideas through distinct personalities and areas of expertise. The name is the point — like a team of horses pulling in harness, except here the human is guiding a team of specialized AI minds. The human is not being replaced but **amplified**: the human is the source of intent and agency; the AI collective provides leverage, not control.
+
+Powered by [masky.ai](https://masky.ai) personalities and voices, every agent has a unique perspective, expertise, and communication style — so it feels less like asking a chatbot questions and more like collaborating with an expert team that's always looking over your shoulder. Agents debate strategies, surface relevant information, anticipate problems, and communicate naturally with each other and with you, optimized toward whatever goal you choose.
+
+## Example use cases
+
+- 🎮 **Gaming coach** — strategy agents debate optimal plays while spectators interact with them
+- 🗺️ **City tour guide** — historians, food critics, architects, and locals comment as you walk
+- 🔧 **Repair assistant** — engineering agents identify components and suggest next steps
+- 📚 **Education** — professors from different disciplines explain what you're seeing
+- 🧑‍🍳 **Cooking** — chefs monitor technique and timing while nutritionists suggest improvements
+- 🚗 **Driving or navigation** — agents highlight hazards, landmarks, and route alternatives
+- 🏭 **Industrial operations** — safety, maintenance, and process experts monitor live workflows
+- ♿ **Accessibility** — agents describe surroundings and read signs for visually impaired users
 
 Built for the **Memory Meets Motion** hackathon — AI that doesn't just react to your feed, it **remembers** it and **acts** on it:
 
