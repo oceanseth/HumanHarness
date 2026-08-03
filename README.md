@@ -56,79 +56,68 @@ The core loop:
 
 ## Setup
 
+The MVP is an **Electron app**: the main process runs the whole pipeline (ingest → perceive → signals → memory → crew) and the renderer is the live dashboard — feed preview, labels, transcript, crew commentary, and a goal box.
+
 ### Prerequisites
 
-- Python 3.11+
-- [ffmpeg](https://ffmpeg.org/) and [streamlink](https://streamlink.github.io/) on PATH
-- Docker (for FalkorDB)
-- API keys: LaserData, RocketRide.ai, Guild.ai, masky.ai, and an STT provider (OpenAI Whisper API or Deepgram)
+- Node.js 22+
+- [ffmpeg](https://ffmpeg.org/) and [streamlink](https://streamlink.github.io/) on PATH (not needed in demo mode)
+- Docker (for FalkorDB — optional; an in-memory graph is used as fallback)
+- `ANTHROPIC_API_KEY` (vision labeling + persona crew)
+- Optional API keys: LaserData, RocketRide.ai, Guild.ai, masky.ai, and an STT provider (Deepgram or OpenAI Whisper). Every sponsor integration has a local fallback so the loop runs without them.
 
 ### 1. Clone & install
 
 ```bash
 git clone https://github.com/oceanseth/HumanHarness
 cd HumanHarness
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+npm install
 ```
 
-### 2. Start FalkorDB
+### 2. Start FalkorDB (optional)
 
 ```bash
 docker run -d --name humanharness-memory -p 6379:6379 falkordb/falkordb
 ```
 
+If it's not running, memory falls back to an in-process graph automatically.
+
 ### 3. Configure
 
-Copy `.env.example` to `.env` and fill in:
+Copy `.env.example` to `.env` and fill in what you have. The two that matter most:
 
 ```ini
 TWITCH_CHANNEL=your_channel_name
-
-LASERDATA_API_KEY=...
-LASERDATA_STREAM=humanharness-live
-
-FALKORDB_URL=redis://localhost:6379
-FALKORDB_GRAPH=humanharness
-
-ROCKETRIDE_API_KEY=...
-GUILD_API_KEY=...
-MASKY_API_KEY=...
-
-STT_PROVIDER=whisper          # whisper | deepgram
-OPENAI_API_KEY=...            # if whisper
-DEEPGRAM_API_KEY=...          # if deepgram
-
-FRAME_INTERVAL_MS=500
+ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+Set `MOCK_INGEST=true` to demo the full crew loop with scripted scene labels — no stream, no streamlink/ffmpeg.
 
 ### 4. Run
 
 ```bash
-python -m humanharness run --channel $TWITCH_CHANNEL
+npm start
 ```
 
-This starts three processes:
-
-- **ingest** — streamlink/ffmpeg pipeline: 500 ms frame grabs → labeler → LaserData; audio → STT → LaserData
-- **memory** — LaserData consumer → FalkorDB graph writer
-- **crew** — Guild.ai session hosting the four personas, with RocketRide.ai as the action layer and masky.ai for voices
-
-Then just talk — your mic/stream audio is transcribed and the crew hears you. Set a goal out loud ("help me beat this boss without healing items") and the personas will optimize their commentary and actions around it.
+Hit **Start** in the window. The main process spawns streamlink/ffmpeg (frame grabs every 500 ms → Claude vision labeler → LaserData signal stream; audio → STT), folds labels into the FalkorDB graph, and every few seconds the Guild-routed crew picks a persona to speak — voiced through masky.ai when a key is present, browser speechSynthesis otherwise. Type in the "talk to the crew" box (or speak, with STT configured) and set a goal — the personas optimize their commentary and lookups around it.
 
 ## Repo layout
 
 ```
-humanharness/
-  ingest/       # streamlink + ffmpeg wrappers, 500ms frame loop, STT
-  perceive/     # frame labeler (vision model → structured labels)
-  signals/      # LaserData publisher + consumer
-  memory/       # FalkorDB graph schema + writers/readers
-  actions/      # RocketRide.ai orchestration flows
-  crew/         # Guild.ai agent definitions, persona prompts, masky.ai voices
-  cli.py
+main.js           # Electron main process — window + pipeline wiring over IPC
+preload.js        # contextBridge API for the renderer
+renderer/         # dashboard UI: feed, labels, transcript, commentary, goal
+src/
+  config.js       # .env loading + defaults
+  pipeline.js     # the core loop, wires everything below together
+  ingest.js       # streamlink + ffmpeg: 500ms frame grabs + audio segments (+ mock mode)
+  perceive.js     # frame labeler (Claude vision → structured labels)
+  stt.js          # Deepgram / Whisper transcription
+  signals.js      # LaserData publisher (local event bus fallback)
+  memory.js       # FalkorDB graph writer/reader (in-memory fallback)
+  actions.js      # RocketRide.ai orchestration (mock fallback)
+  crew.js         # Guild routing + persona prompts + masky.ai voices
 .env.example
-requirements.txt
 ```
 
 ## Personas (masky.ai)

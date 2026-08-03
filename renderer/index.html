@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'" />
+  <title>HumanHarness</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>HumanHarness</h1>
+    <span id="mode" class="badge"></span>
+    <div class="controls">
+      <button id="start">Start</button>
+      <button id="stop" disabled>Stop</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="feed">
+      <img id="frame" alt="waiting for feed…" />
+      <div class="goal-row">
+        <input id="goal" placeholder="Set a goal — e.g. beat this boss without healing items" />
+        <button id="setGoal">Set goal</button>
+      </div>
+      <div class="goal-row">
+        <input id="sayBox" placeholder="Talk to the crew (stands in for the mic)" />
+        <button id="sayBtn">Say</button>
+      </div>
+      <div id="labels" class="labels"></div>
+    </section>
+
+    <section class="crew">
+      <h2>Crew</h2>
+      <div id="commentary" class="scroll"></div>
+      <h2>Transcript</h2>
+      <div id="transcript" class="scroll small"></div>
+      <h2>Status</h2>
+      <div id="status" class="scroll small"></div>
+    </section>
+  </main>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
