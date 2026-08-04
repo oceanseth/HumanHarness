@@ -2,9 +2,27 @@ require("dotenv").config({ quiet: true });
 
 const bool = (v, dflt = false) =>
   v === undefined || v === "" ? dflt : /^(1|true|yes)$/i.test(v);
-const int = (v, dflt) => {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : dflt;
+
+class ConfigError extends TypeError {}
+
+const STT_PROVIDERS = new Set(["deepgram", "whisper", "none"]);
+
+const positiveInt = (value, dflt, name) => {
+  if (value === undefined || value.trim() === "") return dflt;
+  const normalized = value.trim();
+  const parsed = Number(normalized);
+  if (!/^\d+$/.test(normalized) || !Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new ConfigError(`${name} must be a positive integer`);
+  }
+  return parsed;
+};
+
+const sttProvider = (value) => {
+  const provider = (value || "none").trim().toLowerCase() || "none";
+  if (!STT_PROVIDERS.has(provider)) {
+    throw new ConfigError("STT_PROVIDER must be one of: deepgram, whisper, none");
+  }
+  return provider;
 };
 
 // The Laser SDK takes one bare connection target: `token@host` or `user:pwd@host`
@@ -54,20 +72,28 @@ module.exports = {
     owner: process.env.GUILD_WORKSPACE_OWNER || "",
     workspace: process.env.GUILD_WORKSPACE || "",
     baseUrl: process.env.GUILD_BASE_URL || "https://app.guild.ai",
-    timeoutMs: int(process.env.GUILD_TIMEOUT_MS, 60000),
-    pollIntervalMs: int(process.env.GUILD_POLL_INTERVAL_MS, 1000),
+    timeoutMs: positiveInt(process.env.GUILD_TIMEOUT_MS, 60000, "GUILD_TIMEOUT_MS"),
+    pollIntervalMs: positiveInt(
+      process.env.GUILD_POLL_INTERVAL_MS,
+      1000,
+      "GUILD_POLL_INTERVAL_MS",
+    ),
   },
   maskyApiKey: process.env.MASKY_API_KEY || "",
   maskyAvatarId: process.env.MASKY_AVATAR_ID || "",
   maskyAvatarOwnerUserId: process.env.MASKY_AVATAR_OWNER_USER_ID || "",
 
   stt: {
-    provider: (process.env.STT_PROVIDER || "none").toLowerCase(),
+    provider: sttProvider(process.env.STT_PROVIDER),
     deepgramApiKey: process.env.DEEPGRAM_API_KEY || "",
     openaiApiKey: process.env.OPENAI_API_KEY || "",
   },
 
-  frameIntervalMs: int(process.env.FRAME_INTERVAL_MS, 500),
-  labelIntervalMs: int(process.env.LABEL_INTERVAL_MS, 2000),
-  commentaryIntervalMs: int(process.env.COMMENTARY_INTERVAL_MS, 8000),
+  frameIntervalMs: positiveInt(process.env.FRAME_INTERVAL_MS, 500, "FRAME_INTERVAL_MS"),
+  labelIntervalMs: positiveInt(process.env.LABEL_INTERVAL_MS, 2000, "LABEL_INTERVAL_MS"),
+  commentaryIntervalMs: positiveInt(
+    process.env.COMMENTARY_INTERVAL_MS,
+    8000,
+    "COMMENTARY_INTERVAL_MS",
+  ),
 };
