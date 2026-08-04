@@ -1,0 +1,57 @@
+{
+  "pipeline": {
+    "project_id": "humanharness-lookup",
+    "source": "source_1",
+    "components": [
+      {
+        "id": "source_1",
+        "provider": "webhook",
+        "config": {}
+      },
+      {
+        "id": "prompt_1",
+        "provider": "prompt",
+        "config": {
+          "text": "You are the Scout for a crew co-casting a live video feed. Answer the lookup in at most three sentences: concrete, specific, immediately actionable. If you do not know, say so in one sentence rather than guessing."
+        },
+        "input": [
+          {
+            "from": "source_1",
+            "lane": "questions"
+          }
+        ]
+      },
+      {
+        "id": "llm_1",
+        "provider": "llm_minimax",
+        "config": {
+          "profile": "custom",
+          "custom": {
+            "model": "${ROCKETRIDE_MINIMAX_MODEL}",
+            "modelTotalTokens": 204800,
+            "modelOutputTokens": 2048,
+            "serverbase": "${ROCKETRIDE_MINIMAX_BASE_URL}",
+            "apikey": "${ROCKETRIDE_MINIMAX_API_KEY}"
+          }
+        },
+        "input": [
+          {
+            "from": "prompt_1",
+            "lane": "questions"
+          }
+        ]
+      },
+      {
+        "id": "target_1",
+        "provider": "response_answers",
+        "config": {},
+        "input": [
+          {
+            "from": "llm_1",
+            "lane": "answers"
+          }
+        ]
+      }
+    ]
+  }
+}

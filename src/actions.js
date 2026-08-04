@@ -7,50 +7,10 @@
 // Without a RocketRide key this stays a mock that records the intent and
 // returns nothing, so the crew still runs but performs no external calls.
 
+const path = require("node:path");
+
 const CONNECT_TIMEOUT_MS = 15000;
-
-const SCOUT_PROMPT = [
-  "You are the Scout for a crew co-casting a live video feed.",
-  "Answer the lookup in at most three sentences: concrete, specific, immediately actionable.",
-  "If you do not know, say so in one sentence rather than guessing.",
-].join(" ");
-
-// The MiniMax node wants its key inline — RocketRide only substitutes
-// ${ROCKETRIDE_*} placeholders, so nothing else reaches the engine from .env.
-const lookupPipeline = (model, apikey, serverbase) => ({
-  project_id: "humanharness-lookup",
-  source: "source_1",
-  components: [
-    { id: "source_1", provider: "webhook", config: {} },
-    {
-      id: "prompt_1",
-      provider: "prompt",
-      config: { text: SCOUT_PROMPT },
-      input: [{ from: "source_1", lane: "questions" }],
-    },
-    {
-      id: "llm_1",
-      provider: "llm_minimax",
-      config: {
-        profile: "custom",
-        custom: {
-          model,
-          modelTotalTokens: 204800,
-          modelOutputTokens: 2048,
-          serverbase,
-          apikey,
-        },
-      },
-      input: [{ from: "prompt_1", lane: "questions" }],
-    },
-    {
-      id: "target_1",
-      provider: "response_answers",
-      config: {},
-      input: [{ from: "llm_1", lane: "answers" }],
-    },
-  ],
-});
+const RIDE_PIPE_PATH = path.join(__dirname, "..", "ride.pipe");
 
 const withTimeout = (promise, ms, what) => {
   let timer;
@@ -88,7 +48,12 @@ class Actions {
       const client = new RocketRideClient({ auth: this.apiKey, uri: CONST_DEFAULT_WEB_CLOUD });
       await client.connect();
       const started = await client.use({
-        pipeline: lookupPipeline(this.model, this.minimaxApiKey, this.minimaxBaseUrl),
+        filepath: RIDE_PIPE_PATH,
+        env: {
+          ROCKETRIDE_MINIMAX_MODEL: this.model,
+          ROCKETRIDE_MINIMAX_BASE_URL: this.minimaxBaseUrl,
+          ROCKETRIDE_MINIMAX_API_KEY: this.minimaxApiKey,
+        },
         useExisting: true,
         ttl: 0,
       });
