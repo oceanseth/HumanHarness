@@ -1,4 +1,8 @@
-require("dotenv").config({ quiet: true });
+const path = require("node:path");
+
+// Resolve the hackathon environment beside the application source so Finder,
+// `open`, and packaged launchers do not depend on the caller's working folder.
+require("dotenv").config({ path: path.join(__dirname, "..", ".env"), quiet: true });
 
 const bool = (v, dflt = false) =>
   v === undefined || v === "" ? dflt : /^(1|true|yes)$/i.test(v);
