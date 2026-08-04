@@ -69,7 +69,12 @@ class Crew {
         guildError = this.guildClient.configurationError();
       }
 
-      const out = await this.speakLocally(trigger, memories, route?.persona);
+      const out = await this.speakLocally(
+        trigger,
+        memories,
+        route?.persona,
+        route?.specialistBrief,
+      );
       if (!out) return null;
       if (route?.persona) out.persona = route.persona;
       if (!PERSONAS[out.persona]) out.persona = "strategist";
@@ -82,6 +87,7 @@ class Crew {
           ? "guild"
           : "minimax";
       if (route?.routingReason) out.routingReason = route.routingReason;
+      if (route?.specialistBrief) out.specialistBrief = route.specialistBrief;
       if (guildError) out.routingWarning = guildError;
 
       for (const fact of out.remember || []) {
@@ -98,13 +104,14 @@ class Crew {
     }
   }
 
-  async speakLocally(trigger, memories, routedPersona = null) {
+  async speakLocally(trigger, memories, routedPersona = null, specialistBrief = null) {
     const system = [
       "You are the HumanHarness crew: four masky.ai personas co-casting a live feed. The human drives; you pull alongside.",
       ...Object.entries(PERSONAS).map(([k, v]) => `- ${k}: ${v}`),
       routedPersona
         ? `Guild selected ${routedPersona}. Use exactly that persona and write their line.`
         : "Pick the ONE persona whose voice fits this moment and write their line.",
+      "Guild agents provide only deterministic planning data. You are the only model that writes the spoken commentary.",
       "Return JSON only, with no markdown, using exactly this shape:",
       '{"persona":"strategist|historian|hypecaster|scout","line":"at most two sentences","lookup":null,"remember":[]}',
       this.goal ? `The human's stated goal: ${this.goal}` : "No goal stated yet.",
@@ -115,6 +122,9 @@ class Crew {
       memories.length
         ? `Graph memory recall:\n${memories.map((m) => JSON.stringify(m)).join("\n")}`
         : "No relevant memories.",
+      specialistBrief
+        ? `Guild specialist brief (structured planning context):\n${JSON.stringify(specialistBrief)}`
+        : "No Guild specialist brief; choose from the live context.",
       trigger === "tick"
         ? "React to the current moment."
         : `The human just said: "${trigger}". Respond to them.`,
