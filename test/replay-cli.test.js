@@ -24,3 +24,15 @@ test("replay CLI rejects incomplete arguments", () => {
   assert.equal(run.status, 1);
   assert.match(run.stderr, /Usage: humanharness replay/);
 });
+
+for (const args of [["--help"], ["-h"], ["replay", "--help"], ["replay", "-h"]]) {
+  test(`replay CLI shows help for ${args.join(" ")}`, () => {
+    const run = spawnSync(process.execPath, [cli, ...args], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /Usage: humanharness replay <fixture\.jsonl>/);
+    assert.equal(run.stderr, "");
+  });
+}
