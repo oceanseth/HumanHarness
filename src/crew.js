@@ -47,9 +47,15 @@ class Crew {
     this.busy = true;
     try {
       const latest = this.recentSignals[this.recentSignals.length - 1];
-      const terms = [...(latest.objects || []), ...(latest.events || [])]
-        .flatMap((s) => s.toLowerCase().split(/\W+/))
-        .filter((w) => w.length > 3);
+      const terms = [
+        ...(latest.objects || []),
+        ...(latest.events || []),
+        latest.text || "",
+        trigger === "tick" ? "" : trigger,
+        this.goal,
+      ]
+        .flatMap((value) => String(value).toLowerCase().split(/\W+/))
+        .filter((word) => word.length > 3);
       const memories = await this.memory.recall(terms);
 
       let route;
@@ -69,17 +75,24 @@ class Crew {
         guildError = this.guildClient.configurationError();
       }
 
+      const specialistLookup = route?.specialistBrief?.lookup || null;
+      let specialistLookupResult = null;
+      if (specialistLookup) {
+        specialistLookupResult = await this.runLookup(specialistLookup);
+      }
+
       const out = await this.speakLocally(
         trigger,
         memories,
         route?.persona,
         route?.specialistBrief,
+        specialistLookupResult,
       );
       if (!out) return null;
       if (route?.persona) out.persona = route.persona;
       if (!PERSONAS[out.persona]) out.persona = "strategist";
       out.line = String(out.line || "");
-      out.lookup = out.lookup ? String(out.lookup) : null;
+      out.lookup = specialistLookup || (out.lookup ? String(out.lookup) : null);
       out.remember = Array.isArray(out.remember) ? out.remember.map(String) : [];
       out.routingSource = guildError
         ? "minimax-fallback"
@@ -93,8 +106,10 @@ class Crew {
       for (const fact of out.remember || []) {
         await this.memory.record({ scene: fact, objects: [], events: [fact], ts: new Date().toISOString() });
       }
-      if (out.lookup) {
-        out.lookupResult = await this.actions.lookup(out.lookup);
+      if (specialistLookupResult) {
+        out.lookupResult = specialistLookupResult;
+      } else if (out.lookup) {
+        out.lookupResult = await this.runLookup(out.lookup);
       }
       return out;
     } catch (err) {
@@ -104,7 +119,21 @@ class Crew {
     }
   }
 
-  async speakLocally(trigger, memories, routedPersona = null, specialistBrief = null) {
+  async runLookup(intent) {
+    try {
+      return await this.actions.lookup(intent);
+    } catch (error) {
+      return { mock: true, error: error.message, note: `RocketRide lookup failed: ${intent}` };
+    }
+  }
+
+  async speakLocally(
+    trigger,
+    memories,
+    routedPersona = null,
+    specialistBrief = null,
+    specialistLookupResult = null,
+  ) {
     const system = [
       "You are the HumanHarness crew: four masky.ai personas co-casting a live feed. The human drives; you pull alongside.",
       ...Object.entries(PERSONAS).map(([k, v]) => `- ${k}: ${v}`),
@@ -125,6 +154,9 @@ class Crew {
       specialistBrief
         ? `Guild specialist brief (structured planning context):\n${JSON.stringify(specialistBrief)}`
         : "No Guild specialist brief; choose from the live context.",
+      specialistLookupResult
+        ? `RocketRide result for the specialist's lookup:\n${JSON.stringify(specialistLookupResult)}`
+        : "No specialist lookup result.",
       trigger === "tick"
         ? "React to the current moment."
         : `The human just said: "${trigger}". Respond to them.`,

@@ -28,7 +28,8 @@ class InMemoryGraph {
           .split(/\W+/)
           .some((w) => w && t.includes(w)),
       )
-      .slice(-limit);
+      .slice(-limit)
+      .reverse();
   }
 }
 

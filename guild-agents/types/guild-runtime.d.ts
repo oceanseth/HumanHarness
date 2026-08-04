@@ -1,9 +1,33 @@
+type HumanHarnessAgentInput = {
+  trigger: string
+  goal: string
+  signals: unknown[]
+  memories: unknown[]
+}
+
+type HumanHarnessPersona = "strategist" | "historian" | "hypecaster" | "scout"
+
+type HumanHarnessSpecialistBrief<Persona extends HumanHarnessPersona> = {
+  persona: Persona
+  decision: string
+  priority: "low" | "normal" | "high"
+  summary: string
+  evidence: string[]
+  directives: string[]
+  lookup: string | null
+}
+
 declare module "@guildai/agents-sdk" {
-  export type ToolFunction = (input: any) => Promise<any>
+  export type AgentTool<Input, Output> = {
+    readonly __guildInput?: Input
+    readonly __guildOutput?: Output
+  }
 
   export type Task<Tools extends Record<string, unknown>> = {
     tools: {
-      [Name in keyof Tools]: ToolFunction
+      [Name in keyof Tools]: Tools[Name] extends AgentTool<infer Input, infer Output>
+        ? (input: Input) => Promise<Output>
+        : never
     }
   }
 
@@ -13,21 +37,33 @@ declare module "@guildai/agents-sdk" {
 }
 
 declare module "@guildai/oceanseth~humanharness-strategist/tool" {
-  const tool: unknown
+  const tool: import("@guildai/agents-sdk").AgentTool<
+    HumanHarnessAgentInput,
+    HumanHarnessSpecialistBrief<"strategist">
+  >
   export default tool
 }
 
 declare module "@guildai/oceanseth~humanharness-historian/tool" {
-  const tool: unknown
+  const tool: import("@guildai/agents-sdk").AgentTool<
+    HumanHarnessAgentInput,
+    HumanHarnessSpecialistBrief<"historian">
+  >
   export default tool
 }
 
 declare module "@guildai/oceanseth~humanharness-hypecaster/tool" {
-  const tool: unknown
+  const tool: import("@guildai/agents-sdk").AgentTool<
+    HumanHarnessAgentInput,
+    HumanHarnessSpecialistBrief<"hypecaster">
+  >
   export default tool
 }
 
 declare module "@guildai/oceanseth~humanharness-scout/tool" {
-  const tool: unknown
+  const tool: import("@guildai/agents-sdk").AgentTool<
+    HumanHarnessAgentInput,
+    HumanHarnessSpecialistBrief<"scout">
+  >
   export default tool
 }

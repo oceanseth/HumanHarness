@@ -56,7 +56,8 @@ export function selectSpecialist(input: Input): {
   persona: Persona
   rationale: string
 } {
-  const combined = `${input.trigger.toLowerCase()} ${textFor(input.signals)}`
+  const latestSignals = input.signals.slice(-1)
+  const combined = `${input.trigger.toLowerCase()} ${input.goal.toLowerCase()} ${textFor(latestSignals)}`
   const scores: Record<Persona, number> = {
     strategist: input.trigger === "tick" ? 1 : 4,
     historian: input.memories.length > 0 ? 2 : 0,
@@ -70,7 +71,11 @@ export function selectSpecialist(input: Input): {
   if (/\b(win|won|victory|clutch|achievement|defeated|knockout|celebrat|hype)\w*\b/.test(combined)) {
     scores.hypecaster += 8
   }
-  if (/\b(next|ahead|upcoming|where|when|map|route|schedule|objective|boss|door|path)\b/.test(combined)) {
+  if (
+    /\b(next|ahead|upcoming|where|when|map|route|schedule|door|path|lookup|research|search|investigate|recon)\b/.test(
+      combined,
+    )
+  ) {
     scores.scout += 6
   }
   if (input.goal.trim()) scores.strategist += 1
@@ -102,6 +107,10 @@ export async function run(input: Input, task: Task<Tools>): Promise<Output> {
     default:
       brief = await task.tools.strategist(input)
       break
+  }
+
+  if (brief.persona !== selection.persona) {
+    throw new Error(`The ${selection.persona} tool returned a ${brief.persona} brief`)
   }
 
   return {

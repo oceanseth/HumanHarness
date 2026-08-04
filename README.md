@@ -195,7 +195,7 @@ src/
 bin/
   humanharness.js # Node CLI for replaying recorded moments
 test/             # contract, replay, CLI tests + boss-fight fixture
-guild-agents/     # Five independently deployable Guild TypeScript agent projects
+guild-agents/     # Source for five independently versioned Guild TypeScript agents
 ride.pipe         # RocketRide Scout lookup pipeline (MiniMax credentials injected at runtime)
 .env.example
 ```

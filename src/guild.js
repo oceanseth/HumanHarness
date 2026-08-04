@@ -126,6 +126,13 @@ class GuildClient {
     if (!this.owner) return "GUILD_WORKSPACE_OWNER is not configured";
     if (!this.workspace) return "GUILD_WORKSPACE is not configured";
     if (typeof this.fetch !== "function") return "This Node.js runtime does not provide fetch";
+    try {
+      if (new URL(this.baseUrl).protocol !== "https:") {
+        return "GUILD_BASE_URL must use HTTPS before API trigger credentials can be sent";
+      }
+    } catch {
+      return "GUILD_BASE_URL must be a valid HTTPS URL";
+    }
     return null;
   }
 
@@ -133,45 +140,59 @@ class GuildClient {
     return this.configurationError() === null;
   }
 
-  async request(path, options = {}) {
-    const response = await this.fetch(`${this.baseUrl}${path}`, {
-      ...options,
-      headers: {
-        Authorization: `Basic ${Buffer.from(this.apiKey).toString("base64")}`,
-        Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...options.headers,
-      },
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const detail = payload?.detail || payload?.message || response.statusText || "request failed";
-      throw new Error(`Guild request failed (${response.status}): ${detail}`);
+  async request(path, options = {}, timeoutMs = this.timeoutMs) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+    try {
+      const response = await this.fetch(`${this.baseUrl}${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          Authorization: `Basic ${Buffer.from(this.apiKey).toString("base64")}`,
+          Accept: "application/json",
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...options.headers,
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const detail = payload?.detail || payload?.message || response.statusText || "request failed";
+        throw new Error(`Guild request failed (${response.status}): ${detail}`);
+      }
+      return payload;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(`Guild request timed out after ${timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    return payload;
   }
 
   async route(agentInput) {
     const configError = this.configurationError();
     if (configError) throw new Error(configError);
 
+    const deadline = Date.now() + this.timeoutMs;
     const owner = encodeURIComponent(this.owner);
     const workspace = encodeURIComponent(this.workspace);
     const session = await this.request(`/api/workspaces/${owner}/${workspace}/sessions`, {
       method: "POST",
       body: JSON.stringify({ session_type: "api_trigger", agent_input: agentInput }),
-    });
+    }, Math.max(1, deadline - Date.now()));
     if (!session?.id) throw new Error("Guild did not return a session id");
-    return this.waitForResult(session.id);
+    return this.waitForResult(session.id, deadline);
   }
 
-  async waitForResult(sessionId) {
-    const startedAt = Date.now();
-
-    while (Date.now() - startedAt < this.timeoutMs) {
+  async waitForResult(sessionId, deadline = Date.now() + this.timeoutMs) {
+    while (Date.now() < deadline) {
       const query = new URLSearchParams({ limit: "1000" });
+      const remainingMs = Math.max(1, deadline - Date.now());
       const payload = await this.request(
         `/api/sessions/${encodeURIComponent(sessionId)}/events?${query}`,
+        {},
+        remainingMs,
       );
       const events = Array.isArray(payload)
         ? payload
@@ -194,7 +215,8 @@ class GuildClient {
         }
       }
 
-      await this.sleep(this.pollIntervalMs);
+      const sleepMs = Math.min(this.pollIntervalMs, Math.max(0, deadline - Date.now()));
+      await this.sleep(sleepMs);
     }
 
     throw new Error(`Guild agent timed out after ${this.timeoutMs}ms`);

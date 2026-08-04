@@ -236,7 +236,7 @@ test("Crew exposes an incomplete Guild setup as a MiniMax fallback", () => {
   assert.match(crew.routingStatus(), /<api_key_id>:<api_key_secret>/);
 });
 
-test("Guild topology contains five distinct independently deployable entrypoints", () => {
+test("Guild topology contains five distinct agent source entrypoints", () => {
   const expected = ["router", ...PERSONAS].sort();
   const entrypoints = fs.readdirSync(GUILD_AGENTS_DIR, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -359,8 +359,11 @@ test("Guild specialists return repeatable structured decisions without an LLM", 
   }
 });
 
-test("Guild router executes the selected specialist through task.tools", async () => {
+test("Guild router executes the selected specialist implementation through task.tools", async () => {
   const { run } = loadRouterForTest();
+  const specialists = Object.fromEntries(
+    PERSONAS.map((persona) => [persona, loadSpecialistForTest(persona)]),
+  );
   const cases = [
     {
       persona: "strategist",
@@ -378,17 +381,20 @@ test("Guild router executes the selected specialist through task.tools", async (
       persona: "scout",
       input: { trigger: "tick", goal: "", signals: [{ events: ["next path"] }], memories: [] },
     },
+    {
+      persona: "scout",
+      input: { trigger: "tick", goal: "map the next boss door", signals: [], memories: [] },
+    },
   ];
 
   for (const scenario of cases) {
     const calls = [];
-    const briefs = Object.fromEntries(PERSONAS.map((persona) => [persona, specialistBrief(persona)]));
     const task = {
       tools: Object.fromEntries(PERSONAS.map((persona) => [
         persona,
         async (input) => {
           calls.push({ persona, input });
-          return briefs[persona];
+          return specialists[persona].run(input);
         },
       ])),
     };
@@ -398,11 +404,14 @@ test("Guild router executes the selected specialist through task.tools", async (
     assert.deepEqual(calls, [{ persona: scenario.persona, input: scenario.input }]);
     assert.equal(result.persona, scenario.persona);
     assert.equal(result.specialist, scenario.persona);
-    assert.deepEqual(result.brief, briefs[scenario.persona]);
+    assert.equal(result.brief.persona, scenario.persona);
+    assert.equal(typeof result.brief.decision, "string");
+    assert.ok(result.brief.decision.length > 0);
   }
 });
 
 test("Guild router uses the published specialist tool packages", () => {
+  const definition = loadRouterForTest().default;
   const source = fs.readFileSync(path.join(GUILD_AGENTS_DIR, "router", "agent.ts"), "utf8");
   const manifest = JSON.parse(
     fs.readFileSync(path.join(GUILD_AGENTS_DIR, "router", "package.json"), "utf8"),
@@ -412,6 +421,7 @@ test("Guild router uses the published specialist tool packages", () => {
   for (const persona of PERSONAS) {
     const packageName = `@guildai/oceanseth~humanharness-${persona}`;
     assert.equal(manifest.dependencies[packageName], "^1.0.0");
+    assert.equal(definition.tools[persona].specifier, `${packageName}/tool`);
     assert.match(source, new RegExp(`from "${packageName}/tool"`));
     assert.match(source, new RegExp(`await task\\.tools\\.${persona}\\(input\\)`));
   }

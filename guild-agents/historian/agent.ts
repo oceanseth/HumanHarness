@@ -224,7 +224,7 @@ async function run(input: Input): Promise<Output> {
   const signalText = input.signals.map(textOf).filter(Boolean).join(" ")
   const triggerText = clean(input.trigger)
   const goalText = clean(input.goal)
-  const currentText = clean(`${triggerText} ${signalText}`) || goalText
+  const currentText = clean(`${triggerText} ${goalText} ${signalText}`)
   const currentTerms = termsOf(currentText)
 
   if (input.memories.length === 0) {

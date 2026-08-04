@@ -109,7 +109,7 @@ const run = async (input: Input): Promise<Output> => {
   )
   const immediateThreat = includesAny(
     context,
-    /\b(urgent|immediate|incoming|attack(?:ing)?|telegraph(?:ed)?|danger|warning|ambush|under fire|now)\b/,
+    /\b(urgent|immediate|incoming|attack(?:s|ed|ing)?|telegraph(?:s|ed|ing)?|danger|warning|ambush|under fire|now)\b/,
   )
   const blocker = includesAny(
     context,

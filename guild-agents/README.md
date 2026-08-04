@@ -17,8 +17,8 @@ humanharness-router
 deterministic structured brief → Electron → local MiniMax commentary
 ```
 
-Every directory containing an `agent.ts` file is an independently publishable
-Guild project. The router scores the current moment, invokes exactly one
+Every directory containing an `agent.ts` file is the source for a separately
+versioned Guild agent. The router scores the current moment, invokes exactly one
 specialist through its published `/tool` sub-package, and returns the selected
 persona plus that specialist's structured brief. The specialists do not write
 spoken commentary and none of the five agents calls `task.llm`; MiniMax remains
@@ -69,19 +69,20 @@ npm run typecheck:guild
 npm test
 ```
 
-The checked-in declaration file under `types/` lets the repository type-check
-against the documented SDK surface without copying Guild's private runtime
-packages into the application. An authenticated Guild build remains the
-authoritative validation for generated agent-tool types and state-machine
-compilation.
+The checked-in declaration file under `types/` gives each published tool a
+concrete input and output contract for local type-checking without copying
+Guild's private runtime packages into the application. An authenticated Guild
+build remains the authoritative validation for generated package exports and
+state-machine compilation.
 
 ## Publish order
 
 Guild manages `guild.json`, the build scripts, SDK versions, and private npm
-registry settings. Create one Guild CLI project per directory and retain those
-generated scaffold files. Copy only the corresponding `agent.ts` into each
-project; do not replace a scaffold's complete `package.json` or `tsconfig.json`
-with the small repository manifests.
+registry settings. Those identity files are deliberately not fabricated in this
+repository: they are created only after an authenticated Guild login. Create one
+Guild CLI project per agent and retain those generated scaffold files. Copy only
+the corresponding `agent.ts` into each project; do not replace a scaffold's
+complete `package.json` or `tsconfig.json` with the small repository manifests.
 
 Use the Guild CLI explicitly so it is not confused with the unrelated GNU
 `guild`/Guile executable that some systems provide:
@@ -110,7 +111,8 @@ npx --yes @guildai/cli@0.17.0 agent save \
 
 Each published specialist must have a version compatible with `^1.0.0` before
 the router can resolve it. For a Guild owner other than `oceanseth`, replace the
-owner in all four router imports and dependency names:
+owner in all four router imports, dependency names, and local declarations in
+`guild-agents/types/guild-runtime.d.ts`:
 
 ```text
 @guildai/<owner>~humanharness-strategist/tool
@@ -126,7 +128,7 @@ Guild requires compilation for sub-agent calls.
 
 ```bash
 npx --yes @guildai/cli@0.17.0 agent test --mode json
-npx --yes @guildai/cli@0.17.0 agent capabilities --output json
+npx --yes @guildai/cli@0.17.0 --mode json agent capabilities
 npx --yes @guildai/cli@0.17.0 agent save \
   --message "Publish HumanHarness multi-agent router" \
   --wait \

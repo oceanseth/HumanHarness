@@ -50,7 +50,7 @@ test("legacy moments receive deterministic provider-neutral provenance", () => {
       provenanceId: "moment-1",
       parentProvenanceId: null,
       rootEventId: "moment-1",
-      sourceActor: "unknown",
+      sourceActor: "humanharness",
       contextHashes: [],
     },
   );
@@ -65,7 +65,7 @@ test("legacy moments receive deterministic provider-neutral provenance", () => {
       provenanceId: "moment-1:proposal:0",
       parentProvenanceId: "moment-1",
       rootEventId: "moment-1",
-      sourceActor: "unknown",
+      sourceActor: "humanharness",
     },
   );
   assert.equal(moment.memoryReferences[0].parentProvenanceId, "moment-1");
@@ -74,7 +74,7 @@ test("legacy moments receive deterministic provider-neutral provenance", () => {
     "moment-1:proposal:0",
   );
   assert.equal(moment.actionRequests[0].parentProvenanceId, "moment-1");
-  assert.equal(moment.actionRequests[0].sourceActor, "unknown");
+  assert.equal(moment.actionRequests[0].sourceActor, "humanharness");
   assert.deepEqual(
     {
       provenanceId: result.commentaryDecisions[0].provenanceId,
@@ -172,5 +172,42 @@ test("parseMoment rejects malformed provenance", () => {
   assert.throws(
     () => parseMoment({ ...basicMoment(), parent_provenance_id: "parent" }),
     /parent_provenance_id is not allowed/,
+  );
+});
+
+test("parseMoment rejects explicit null defaults", () => {
+  for (const field of ["data", "memoryReferences", "personaProposals", "actionRequests"]) {
+    assert.throws(() => parseMoment({ ...basicMoment(), [field]: null }), new RegExp(field));
+  }
+
+  assert.throws(
+    () => parseMoment({ ...basicMoment(), contextHashes: null }),
+    /contextHashes must be an array/,
+  );
+  assert.throws(
+    () => parseMoment({
+      ...basicMoment(),
+      personaProposals: [{ personaId: "strategist", commentary: "Dodge.", priority: null }],
+    }),
+    /priority must be a non-negative integer/,
+  );
+  assert.throws(
+    () => parseMoment({
+      ...basicMoment(),
+      actionRequests: [{
+        actionId: "action-1",
+        actionType: "overlay.warning",
+        parameters: null,
+        rationale: "Warn the player.",
+      }],
+    }),
+    /parameters must be an object/,
+  );
+});
+
+test("parseMoment rejects impossible calendar timestamps", () => {
+  assert.throws(
+    () => parseMoment({ ...basicMoment(), occurredAt: "2026-02-30T21:00:00Z" }),
+    /ISO-8601 timestamp with a timezone/,
   );
 });
