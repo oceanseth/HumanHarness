@@ -7,12 +7,12 @@ const VOICE_STYLE = {
   hypecaster: { pitch: 1.3, rate: 1.2 },
   scout: { pitch: 1.1, rate: 1.0 },
 };
-let maskyVoices = false;
+let maskyPersonas = new Set();
 let muted = false;
 const activeAudio = new Set();
 
 function speak(persona, line) {
-  if (maskyVoices || muted) return; // real masky.ai playback arrives via onAudio
+  if (maskyPersonas.has(persona) || muted) return; // configured Masky playback arrives via onAudio
   const u = new SpeechSynthesisUtterance(line);
   const style = VOICE_STYLE[persona] || {};
   u.pitch = style.pitch ?? 1;
@@ -50,7 +50,7 @@ const esc = (s) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 window.hh.getConfig().then((cfg) => {
-  maskyVoices = cfg.maskyVoices;
+  maskyPersonas = new Set(cfg.maskyPersonas || []);
   $("mode").textContent = cfg.mockIngest || !cfg.twitchChannel
     ? "demo mode (mock ingest)"
     : `twitch.tv/${cfg.twitchChannel} · stt: ${cfg.sttProvider}`;
@@ -102,8 +102,8 @@ window.hh.onCommentary((c) => {
     (Array.isArray(c.lookupResult?.answers) ? c.lookupResult.answers.join(" ") : "");
   const lookup = lookupText ? `<div class="lookup">↳ ${esc(lookupText)}</div>` : "";
   append($("commentary"), `<span class="who ${esc(c.persona)}">${esc(c.persona)}</span>${esc(c.line)}${lookup}`);
-  // Only speak via speechSynthesis if masky is off; audio arrives via onAudio when masky is on.
-  if (!maskyVoices) speak(c.persona, c.line);
+  // Personas without a Masky avatar retain the browser voice fallback.
+  if (!maskyPersonas.has(c.persona)) speak(c.persona, c.line);
 });
 
 // masky.ai audio: play received URL (replaces speechSynthesis when masky is configured).

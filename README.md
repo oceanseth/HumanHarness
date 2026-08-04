@@ -136,7 +136,7 @@ sponsor-service fallback.
 Additional configuration includes:
 
 ```ini
-MASKY_API_KEY=mky_...                                          # plus MASKY_AVATAR_ID and MASKY_AVATAR_OWNER_USER_ID
+MASKY_API_KEY=mky_...                                          # plus MASKY_<PERSONA>_AVATAR_ID and _OWNER_USER_ID
 TWITCH_CHANNEL=your_channel_name                               # unless MOCK_INGEST=true
 ```
 
@@ -218,7 +218,7 @@ ride.pipe         # RocketRide Scout lookup pipeline (MiniMax credentials inject
 | Persona | Job |
 |---------|-----|
 | **Strategist** | Tactics toward the stated goal — "you have a 500 ms window after his slam, dodge left" |
-| **Historian** | Memory callbacks from FalkorDB — "last session this same miniboss wiped you when you greeded the third hit" |
+| **Historian** | Memory callbacks from FalkorDB, voiced by Masky's HH Historian (Adolph Sutro) avatar |
 | **Hype-caster** | Color commentary, energy, celebration |
 | **Scout** | What's ahead — pulls lookups via RocketRide (maps, wikis, schedules) before you get there |
 

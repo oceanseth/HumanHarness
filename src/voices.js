@@ -5,74 +5,89 @@ const { EventEmitter } = require("events");
 // and injects speak-mode audio turns. Without a key, returns null so
 // the renderer keeps using browser speechSynthesis.
 //
-// Requires MASKY_AVATAR_ID and MASKY_AVATAR_OWNER_USER_ID in env for the
-// avatar whose voice will speak every line. The avatar must already exist
-// (create one at https://masky.ai/developer or via the API).
+// Each configured persona owns a separate Masky conversation so its portrait,
+// personality, and voice remain distinct. Unconfigured personas keep the
+// renderer's browser speechSynthesis fallback.
 class Voices extends EventEmitter {
-  constructor(config) {
+  constructor(config, options = {}) {
     super();
     this.apiKey = config.maskyApiKey;
-    this.avatarId = config.maskyAvatarId;
-    this.avatarOwnerUserId = config.maskyAvatarOwnerUserId;
+    this.avatars = config.maskyAvatars || {};
     this.baseUrl = "https://masky.ai/api";
-
-    this.conversationId = null;
-    this.shareSlug = null;
-    this.liveUrl = null;
+    this.fetch = options.fetch || globalThis.fetch;
+    this.sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.conversations = new Map();
     this.active = false;
   }
 
-  // Start a masky.ai conversation for this session. One conversation
-  // hosts all commentary turns; each turn auto-appends to the live player.
+  configuredAvatars() {
+    return Object.entries(this.avatars).filter(
+      ([, avatar]) => avatar?.avatarId && avatar?.avatarOwnerUserId,
+    );
+  }
+
+  // Start one masky.ai conversation per configured persona for this session.
   async start() {
-    if (!this.apiKey || !this.avatarId || !this.avatarOwnerUserId) {
-      this.emit("status", "masky voices: missing key / avatarId / avatarOwnerUserId — using browser TTS fallback");
+    const configured = this.configuredAvatars();
+    if (!this.apiKey || configured.length === 0) {
+      this.emit("status", "masky voices: no configured persona avatars — using browser TTS fallback");
       return null;
     }
 
-    try {
-      const res = await fetch(`${this.baseUrl}/conversations`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          avatarOwnerUserId: this.avatarOwnerUserId,
-          avatarId: this.avatarId,
-        }),
-      });
+    await Promise.all(configured.map(async ([persona, avatar]) => {
+      try {
+        const res = await this.fetch(`${this.baseUrl}/conversations`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            avatarOwnerUserId: avatar.avatarOwnerUserId,
+            avatarId: avatar.avatarId,
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
 
-      if (!res.ok) {
-        const body = await res.text();
-        this.emit("status", `masky conversation create failed (${res.status}): ${body}`);
-        return null;
+        if (!res.ok) {
+          const body = await res.text();
+          this.emit("status", `masky ${persona} conversation failed (${res.status}): ${body}`);
+          return;
+        }
+
+        const data = await res.json();
+        if (!data.conversationId || !data.shareSlug) {
+          this.emit("status", `masky ${persona} conversation returned incomplete data`);
+          return;
+        }
+        this.conversations.set(persona, {
+          conversationId: data.conversationId,
+          shareSlug: data.shareSlug,
+          liveUrl: data.liveUrl,
+        });
+        this.emit("status", `masky ${persona} ready: ${data.liveUrl}`);
+      } catch (err) {
+        this.emit("status", `masky ${persona} conversation error: ${err.message}`);
       }
+    }));
 
-      const data = await res.json();
-      this.conversationId = data.conversationId;
-      this.shareSlug = data.shareSlug;
-      this.liveUrl = data.liveUrl;
-      this.active = true;
-
-      this.emit("status", `masky conversation ready: ${this.liveUrl}`);
-      return this.liveUrl;
-    } catch (err) {
-      this.emit("status", `masky conversation error: ${err.message}`);
-      return null;
-    }
+    this.active = this.conversations.size > 0;
+    return this.active
+      ? Object.fromEntries([...this.conversations].map(([persona, value]) => [persona, value.liveUrl]))
+      : null;
   }
 
   // Speak a line through the masky avatar voice.
   // Injects a speak-mode audio turn, then polls for the rendered audio URL.
   // Returns { audioUrl, persona } or null on failure.
   async speak(persona, line) {
-    if (!this.active || !this.conversationId) return null;
+    const conversation = this.conversations.get(persona);
+    if (!this.active || !conversation) return null;
 
     try {
       // 1. Inject the turn
-      const injectRes = await fetch(
-        `${this.baseUrl}/conversations/${this.conversationId}/turn`,
+      const injectRes = await this.fetch(
+        `${this.baseUrl}/conversations/${conversation.conversationId}/turn`,
         {
           method: "POST",
           headers: {
@@ -98,7 +113,7 @@ class Voices extends EventEmitter {
       if (!turnId) return null;
 
       // 2. Poll for the rendered audio (up to ~12s)
-      const audioUrl = await this._pollForAudio(turnId, 6000, 2000);
+      const audioUrl = await this._pollForAudio(conversation, turnId, 12000, 2000);
       if (audioUrl) {
         return { audioUrl, persona };
       }
@@ -111,12 +126,12 @@ class Voices extends EventEmitter {
 
   // Poll GET /conversations/by-slug/{shareSlug} until the target turn
   // has an audioUrl, or until timeout.
-  async _pollForAudio(turnId, timeoutMs, intervalMs) {
+  async _pollForAudio(conversation, turnId, timeoutMs, intervalMs) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       try {
-        const res = await fetch(
-          `${this.baseUrl}/conversations/by-slug/${this.shareSlug}`,
+        const res = await this.fetch(
+          `${this.baseUrl}/conversations/by-slug/${conversation.shareSlug}`,
           { headers: { Authorization: `Bearer ${this.apiKey}` } },
         );
         if (!res.ok) break;
@@ -133,7 +148,7 @@ class Voices extends EventEmitter {
       } catch {
         // network hiccup — retry
       }
-      await new Promise((r) => setTimeout(r, intervalMs));
+      await this.sleep(intervalMs);
     }
     this.emit("status", `masky turn ${turnId}: timed out waiting for audio`);
     return null;
@@ -141,9 +156,7 @@ class Voices extends EventEmitter {
 
   stop() {
     this.active = false;
-    this.conversationId = null;
-    this.shareSlug = null;
-    this.liveUrl = null;
+    this.conversations.clear();
   }
 }
 
