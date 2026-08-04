@@ -86,9 +86,12 @@ The MVP is an **Electron app**: the main process runs the whole pipeline (ingest
 
 - Node.js 22+
 - [ffmpeg](https://ffmpeg.org/) and [streamlink](https://streamlink.github.io/) on PATH (not needed in demo mode)
-- Docker (for FalkorDB — optional; an in-memory graph is used as fallback)
-- `MINIMAX_KEY` from a MiniMax Token Plan (vision labeling + persona crew)
-- Optional API keys: LaserData, RocketRide.ai, Guild.ai, masky.ai, and an STT provider (Deepgram or OpenAI Whisper). Every sponsor integration has a local fallback so the loop runs without them.
+- A reachable FalkorDB instance, either local or managed
+- Working LaserData data-plane credentials
+- A RocketRide API key and deployed `ride.pipe`
+- Five published Guild agents, an installed router, and API-trigger credentials
+- `MINIMAX_KEY` from a MiniMax Token Plan (vision labeling, RocketRide lookup pipeline, and persona commentary)
+- Optional: masky.ai avatar credentials and an STT provider (Deepgram or OpenAI Whisper)
 
 ### 1. Clone & install
 
@@ -98,7 +101,7 @@ cd HumanHarness
 npm install
 ```
 
-### 2. Start FalkorDB (optional)
+### 2. Provide FalkorDB
 
 Locally:
 
@@ -109,30 +112,32 @@ docker run -d --name humanharness-memory -p 6379:6379 falkordb/falkordb
 Or point `FALKORDB_URL` at a managed FalkorDB Cloud instance. Use the scheme the
 instance actually serves — `rediss://` only if it terminates TLS on that port,
 `redis://` otherwise. A `rediss://` URL against a plaintext port looks exactly
-like an unreachable instance: the connection times out and memory silently falls
-back.
-
-Either way, if it's not reachable, memory falls back to an in-process graph
-automatically and startup is never blocked.
+like an unreachable instance. FalkorDB is mandatory; a connection or health-check
+failure blocks startup.
 
 ### 3. Configure
 
-Copy `.env.example` to `.env` and fill in what you have. The two that matter most:
+Copy `.env.example` to `.env` and configure the complete required chain:
 
 ```ini
-TWITCH_CHANNEL=your_channel_name
 MINIMAX_KEY=sk-cp-...
+LASER_CONNECTION_STRING=<token>@<deployment>.laserdata.cloud
+FALKORDB_URL=redis://localhost:6379
+ROCKETRIDE_API_KEY=rr_...
+GUILD_API_KEY=<api_key_id>:<api_key_secret>
+GUILD_WORKSPACE_OWNER=<owner_name>
+GUILD_WORKSPACE=<workspace_name>
 ```
 
-Set `MOCK_INGEST=true` to demo the full crew loop with scripted scene labels — no stream, no streamlink/ffmpeg.
+Set `MOCK_INGEST=true` to replace Twitch, streamlink, and ffmpeg with scripted
+scene labels. Mock ingest still traverses every required service; it is not a
+sponsor-service fallback.
 
-The sponsor services each need one more line, and each has a fallback if you skip it:
+Additional configuration includes:
 
 ```ini
-LASER_CONNECTION_STRING=<token>@<deployment>.laserdata.cloud   # or LASERDATA_DOMAIN + user/password
-FALKORDB_URL=redis://localhost:6379                            # or a managed instance
-ROCKETRIDE_API_KEY=rr_...                                      # Scout lookups; also uses MINIMAX_KEY
 MASKY_API_KEY=mky_...                                          # plus MASKY_AVATAR_ID and MASKY_AVATAR_OWNER_USER_ID
+TWITCH_CHANNEL=your_channel_name                               # unless MOCK_INGEST=true
 ```
 
 Guild routing uses an [API trigger](https://docs.guild.ai/platform/triggers#api-triggers).
@@ -151,8 +156,16 @@ GUILD_WORKSPACE=<workspace_name>
 The Agent SDK stays inside Guild's runtime; Electron calls only the documented
 sessions/events HTTP API. Guild's router invokes the selected specialist and
 returns its deterministic brief, then MiniMax writes that persona's line locally.
-No Guild agent calls `task.llm`. If Guild is missing, misconfigured, unavailable,
-or times out, MiniMax also selects the persona for that turn.
+No Guild agent calls `task.llm`.
+
+Startup probes the sponsor chain in order: **LaserData → FalkorDB → RocketRide →
+Guild**. The app does not start voices, ingest, or commentary until all four are
+ready. Guild readiness dispatches through Strategist, Historian, Hype-caster,
+and Scout, so all five deployed Guild projects must execute successfully.
+Missing configuration, failed health checks, authentication errors, and timeouts
+emit `BLOCKED <service>`, tear down the connected prefix in reverse order, and
+leave the app stopped. A runtime failure in any of the four services stops the
+active pipeline the same way.
 
 ### 4. Run
 
@@ -185,10 +198,10 @@ src/
   ingest.js       # streamlink + ffmpeg: 500ms frame grabs + audio segments (+ mock mode)
   perceive.js     # frame labeler (MiniMax vision → structured labels)
   stt.js          # Deepgram / Whisper transcription
-  signals.js      # LaserData publisher (local event bus fallback)
-  memory.js       # FalkorDB graph writer/reader (in-memory fallback)
-  actions.js      # RocketRide.ai orchestration (mock fallback)
-  guild.js        # Guild router API-trigger client (local MiniMax fallback in crew.js)
+  signals.js      # required LaserData publisher
+  memory.js       # required FalkorDB graph writer/reader
+  actions.js      # required RocketRide.ai orchestration
+  guild.js        # required Guild router API-trigger client
   crew.js         # Specialist brief → local MiniMax persona prompt + masky.ai voice
   moments.js      # provider-neutral moment contracts + runtime validation
   replay.js       # deterministic offline JSONL replay

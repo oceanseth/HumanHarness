@@ -74,18 +74,33 @@ const normalizeGuildOutput = (value) => {
   const persona = String(candidate.persona || "");
   if (!persona) throw new Error("Guild routing result is missing persona");
   if (!GUILD_PERSONAS.has(persona)) throw new Error(`Guild returned unknown persona: ${persona}`);
-  if (candidate.specialist && String(candidate.specialist) !== persona) {
+  const specialist = String(candidate.specialist || "");
+  if (!specialist) throw new Error("Guild routing result is missing the executed specialist");
+  if (specialist !== persona) {
     throw new Error("Guild routing result does not match the dispatched specialist");
+  }
+  if (candidate.brief === undefined) {
+    throw new Error("Guild routing result is missing the specialist brief");
   }
 
   const result = {
     persona,
+    specialist,
     routingReason: candidate.rationale ? String(candidate.rationale) : "",
+    specialistBrief: normalizeSpecialistBrief(candidate.brief, persona),
   };
-  if (candidate.brief !== undefined) {
-    result.specialistBrief = normalizeSpecialistBrief(candidate.brief, persona);
-  }
   return result;
+};
+
+const isRootTaskEvent = (event) => {
+  if (!event?.task || typeof event.task !== "object") return true;
+  if (Object.prototype.hasOwnProperty.call(event.task, "parent_task_id")) {
+    return event.task.parent_task_id === null;
+  }
+  if (Object.prototype.hasOwnProperty.call(event.task, "parent_task")) {
+    return event.task.parent_task === null;
+  }
+  return true;
 };
 
 const eventText = (event) => {
@@ -115,6 +130,8 @@ class GuildClient {
     this.pollIntervalMs = config.pollIntervalMs ?? 1000;
     this.fetch = options.fetch || globalThis.fetch;
     this.sleep = options.sleep || delay;
+    this.activeControllers = new Set();
+    this.closed = false;
   }
 
   configurationError() {
@@ -140,9 +157,18 @@ class GuildClient {
     return this.configurationError() === null;
   }
 
+  assertOpen() {
+    if (this.closed) throw new Error("Guild client stopped");
+  }
+
   async request(path, options = {}, timeoutMs = this.timeoutMs) {
+    this.assertOpen();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+    this.activeControllers.add(controller);
+    const timer = setTimeout(
+      () => controller.abort(new Error(`Guild request timed out after ${timeoutMs}ms`)),
+      Math.max(1, timeoutMs),
+    );
     try {
       const response = await this.fetch(`${this.baseUrl}${path}`, {
         ...options,
@@ -162,15 +188,28 @@ class GuildClient {
       return payload;
     } catch (error) {
       if (controller.signal.aborted) {
-        throw new Error(`Guild request timed out after ${timeoutMs}ms`);
+        const reason = controller.signal.reason;
+        throw reason instanceof Error
+          ? reason
+          : new Error(`Guild request timed out after ${timeoutMs}ms`);
       }
       throw error;
     } finally {
       clearTimeout(timer);
+      this.activeControllers.delete(controller);
     }
   }
 
+  close() {
+    this.closed = true;
+    for (const controller of this.activeControllers) {
+      controller.abort(new Error("Guild client stopped"));
+    }
+    this.activeControllers.clear();
+  }
+
   async route(agentInput) {
+    this.assertOpen();
     const configError = this.configurationError();
     if (configError) throw new Error(configError);
 
@@ -185,8 +224,63 @@ class GuildClient {
     return this.waitForResult(session.id, deadline);
   }
 
+  async probe() {
+    const probes = [
+      ["strategist", {
+        trigger: "plan an approach",
+        goal: "survive",
+        signals: [],
+        memories: [],
+      }],
+      ["historian", {
+        trigger: "remember the same pattern again",
+        goal: "",
+        signals: [],
+        memories: ["last run"],
+      }],
+      ["hypecaster", {
+        trigger: "tick",
+        goal: "",
+        signals: [{ events: ["victory"] }],
+        memories: [],
+      }],
+      ["scout", {
+        trigger: "tick",
+        goal: "",
+        signals: [{ events: ["next path"] }],
+        memories: [],
+      }],
+    ];
+    const routes = probes.map(async ([expected, input]) => {
+      const result = await this.route(input);
+      if (
+        !result.specialistBrief ||
+        result.persona !== expected ||
+        result.specialist !== expected ||
+        result.specialistBrief.persona !== expected
+      ) {
+        throw new Error(`Guild probe did not execute the ${expected} specialist agent`);
+      }
+      return expected;
+    });
+    let results;
+    try {
+      results = await Promise.all(routes);
+    } catch (error) {
+      // A failed canary invalidates readiness for the whole Guild stage. Keep
+      // sibling pollers from issuing another request after fail-fast returns.
+      this.close();
+      throw error;
+    }
+    if (results.length !== probes.length) {
+      throw new Error("Guild probe did not execute every specialist agent");
+    }
+    return `guild (${results.join(", ")})`;
+  }
+
   async waitForResult(sessionId, deadline = Date.now() + this.timeoutMs) {
     while (Date.now() < deadline) {
+      this.assertOpen();
       const query = new URLSearchParams({ limit: "1000" });
       const remainingMs = Math.max(1, deadline - Date.now());
       const payload = await this.request(
@@ -201,6 +295,7 @@ class GuildClient {
           : [];
 
       for (const event of events) {
+        if (!isRootTaskEvent(event)) continue;
         const failure = eventError(event);
         if (failure) throw new Error(`Guild agent failed: ${failure}`);
 
@@ -217,10 +312,16 @@ class GuildClient {
 
       const sleepMs = Math.min(this.pollIntervalMs, Math.max(0, deadline - Date.now()));
       await this.sleep(sleepMs);
+      this.assertOpen();
     }
 
     throw new Error(`Guild agent timed out after ${this.timeoutMs}ms`);
   }
 }
 
-module.exports = { GuildClient, normalizeGuildOutput, normalizeSpecialistBrief };
+module.exports = {
+  GuildClient,
+  isRootTaskEvent,
+  normalizeGuildOutput,
+  normalizeSpecialistBrief,
+};

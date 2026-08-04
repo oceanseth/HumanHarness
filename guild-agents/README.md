@@ -56,10 +56,32 @@ Its result is additive to the original `{ "persona", "rationale" }` contract:
 }
 ```
 
-The Electron client still accepts a legacy result without `specialist` or
-`brief`, so an older published router remains a safe fallback during rollout.
+The Electron client requires both `specialist` and `brief`. A legacy
+persona-only router result is a hard Guild blocker.
 
-## Local verification
+## Deployment
+
+These are the authenticated Guild projects for the `human-harness`
+organization. Each directory contains its real `guild.json`, complete build
+manifest, and source. All five agents are published at `1.0.0`; the router is
+installed in the `human-harness/humanharness` workspace and has an active API
+trigger.
+
+The four specialists must be published before the router because its manifest
+resolves their `^1.0.0` agent-tool packages:
+
+```text
+@guildai/human-harness~humanharness-strategist/tool
+@guildai/human-harness~humanharness-historian/tool
+@guildai/human-harness~humanharness-hypecaster/tool
+@guildai/human-harness~humanharness-scout/tool
+```
+
+The API trigger credential is runtime configuration, not part of an agent
+project. Guild returns it once as `<api_key_id>:<api_key_secret>`; the desktop
+client sends it with HTTP Basic authentication.
+
+## Verification
 
 From the repository root:
 
@@ -75,70 +97,45 @@ Guild's private runtime packages into the application. An authenticated Guild
 build remains the authoritative validation for generated package exports and
 state-machine compilation.
 
-## Publish order
-
-Guild manages `guild.json`, the build scripts, SDK versions, and private npm
-registry settings. Those identity files are deliberately not fabricated in this
-repository: they are created only after an authenticated Guild login. Create one
-Guild CLI project per agent and retain those generated scaffold files. Copy only
-the corresponding `agent.ts` into each project; do not replace a scaffold's
-complete `package.json` or `tsconfig.json` with the small repository manifests.
-
-Use the Guild CLI explicitly so it is not confused with the unrelated GNU
-`guild`/Guile executable that some systems provide:
+For an authenticated Guild build, log in and run the checked-in project itself:
 
 ```bash
 npx --yes @guildai/cli@0.17.0 auth login
+npx --yes @guildai/cli@0.17.0 workspace select human-harness/humanharness
 ```
 
-Publish the four specialists first. Repeat this flow for `strategist`,
-`historian`, `hypecaster`, and `scout`:
+For each specialist, run:
 
 ```bash
-mkdir humanharness-strategist
-cd humanharness-strategist
-npx --yes @guildai/cli@0.17.0 agent init \
-  --name humanharness-strategist \
-  --template AUTO_MANAGED_STATE
-
-# Copy guild-agents/strategist/agent.ts over this scaffold's agent.ts.
+cd guild-agents/strategist
+npm install
+npm run build
 npx --yes @guildai/cli@0.17.0 agent test --mode json
 npx --yes @guildai/cli@0.17.0 agent save \
-  --message "Publish HumanHarness strategist" \
+  --message "Update HumanHarness strategist" \
   --wait \
   --publish
 ```
 
-Each published specialist must have a version compatible with `^1.0.0` before
-the router can resolve it. For a Guild owner other than `oceanseth`, replace the
-owner in all four router imports, dependency names, and local declarations in
-`guild-agents/types/guild-runtime.d.ts`:
-
-```text
-@guildai/<owner>~humanharness-strategist/tool
-@guildai/<owner>~humanharness-historian/tool
-@guildai/<owner>~humanharness-hypecaster/tool
-@guildai/<owner>~humanharness-scout/tool
-```
-
-Then initialize the router scaffold, copy `router/agent.ts`, and merge the four
-`@guildai/<owner>~humanharness-*` dependencies from `router/package.json` into
-the scaffold's generated manifest. Keep the top-level `"use agent"` directive;
-Guild requires compilation for sub-agent calls.
+Repeat for `historian`, `hypecaster`, and `scout`, then build and publish the
+router last. Keep the top-level `"use agent"` directive; Guild requires
+compilation for sub-agent calls.
 
 ```bash
+cd guild-agents/router
+npm install
+npm run build
 npx --yes @guildai/cli@0.17.0 agent test --mode json
-npx --yes @guildai/cli@0.17.0 --mode json agent capabilities
+npx --yes @guildai/cli@0.17.0 agent capabilities --mode json
 npx --yes @guildai/cli@0.17.0 agent save \
-  --message "Publish HumanHarness multi-agent router" \
+  --message "Update HumanHarness multi-agent router" \
   --wait \
   --publish
 ```
 
-Install the published router in the target workspace and create the API trigger
-on that router. The specialists remain independently installable and runnable,
-while the router reaches their published versions through the typed agent-tool
-dependencies.
+After a new router version is published, update its existing workspace install.
+The specialists remain independently runnable while the router reaches their
+published versions through typed agent-tool dependencies.
 
 The agent-to-agent pattern follows Guild's official
 [Calling an Agent as a Tool](https://www.guild.ai/blog/engineering/guild-user-control-plane-tips-tricks#calling-an-agent-as-a-tool)

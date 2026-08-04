@@ -1,4 +1,5 @@
 const { EventEmitter } = require("events");
+const { asDependencyError } = require("./dependency-error");
 
 const CONNECT_TIMEOUT_MS = 10000;
 
@@ -21,72 +22,103 @@ const withTimeout = (promise, ms) => {
 };
 
 // LaserData signal stream: labeled frames + speech events enter the system
-// only through here. The local bus always carries them; with a connection
-// string they are also published to a LaserData topic.
+// only through a confirmed remote publish. Local listeners run afterward, so
+// downstream state never advances past a failed LaserData write.
 //
 // LaserData is Apache Iggy over VSR, not a REST ingest — publishing goes
 // through the Laser SDK, which ships ESM-only, so it is pulled in with a
-// dynamic import from this CommonJS module. Without a connection string the
-// local bus alone carries the events and the loop still runs.
+// dynamic import from this CommonJS module.
 class SignalStream extends EventEmitter {
-  constructor(config) {
+  constructor(config, options = {}) {
     super();
     this.config = config.laserData;
+    this.loadLaser = options.loadLaser || (() => import("@laserdata/laser-sdk"));
+    this.connectTimeoutMs = options.connectTimeoutMs || CONNECT_TIMEOUT_MS;
     this.laser = null;
     this.topic = null;
-    this.mode = "local bus";
+    this.mode = "disconnected";
   }
 
   async connect() {
-    if (!this.config.connectionString) return this.mode;
+    if (!this.config.connectionString) {
+      throw asDependencyError("LaserData", new Error("LASER_CONNECTION_STRING is required"));
+    }
+    let provisionalLaser = null;
+    let cancelled = false;
+    let closed = false;
+    const closeProvisional = async () => {
+      if (!provisionalLaser || closed) return;
+      closed = true;
+      await provisionalLaser.close().catch(() => {});
+    };
     const open = async () => {
-      const { Laser } = await import("@laserdata/laser-sdk");
+      const { Laser } = await this.loadLaser();
       const laser = await Laser.connect(withBoundedRetries(this.config.connectionString));
-      const topic = laser.stream(this.config.stream).topic(this.config.topic);
-      // one partition: the crew reads this as a single ordered feed, and Iggy
-      // only orders within a partition.
-      await topic.ensure(1);
-      return { laser, topic };
+      provisionalLaser = laser;
+      if (cancelled) {
+        await closeProvisional();
+        throw new Error("connect cancelled after timeout");
+      }
+      try {
+        const topic = laser.stream(this.config.stream).topic(this.config.topic);
+        // one partition: the crew reads this as a single ordered feed, and Iggy
+        // only orders within a partition.
+        await topic.ensure(1);
+        if (cancelled) {
+          await closeProvisional();
+          throw new Error("topic readiness cancelled after timeout");
+        }
+        return { laser, topic };
+      } catch (error) {
+        await closeProvisional();
+        throw error;
+      }
     };
 
     const opening = open();
     try {
-      const opened = await withTimeout(opening, CONNECT_TIMEOUT_MS);
+      const opened = await withTimeout(opening, this.connectTimeoutMs);
       this.laser = opened.laser;
       this.topic = opened.topic;
       this.mode = `laserdata (${this.config.stream}/${this.config.topic})`;
     } catch (err) {
+      cancelled = true;
+      await closeProvisional();
       this.laser = null;
       this.topic = null;
-      this.mode = `local bus (LaserData unavailable: ${err.message})`;
+      this.mode = "disconnected";
       // a handshake that lands after the timeout would otherwise leak a socket
-      opening.then((late) => late.laser.close()).catch(() => {});
+      opening.then((late) => late.laser.close().catch(() => {})).catch(() => {});
+      throw asDependencyError("LaserData", err);
     }
     return this.mode;
   }
 
   async publish(kind, payload) {
-    const event = { kind, stream: this.config.stream, ts: new Date().toISOString(), ...payload };
-    this.emit("signal", event);
-    if (this.topic) {
-      try {
-        await this.topic.publish().json(event).send();
-      } catch (err) {
-        this.emit("signal", { kind: "laserdata-error", error: err.message });
-      }
+    if (!this.topic) {
+      throw asDependencyError("LaserData", new Error("signal stream is not connected"));
     }
+    const event = { kind, stream: this.config.stream, ts: new Date().toISOString(), ...payload };
+    try {
+      await this.topic.publish().json(event).send();
+    } catch (err) {
+      throw asDependencyError("LaserData", err);
+    }
+    this.emit("signal", event);
     return event;
   }
 
   async close() {
-    if (!this.laser) return;
+    const laser = this.laser;
+    this.laser = null;
+    this.topic = null;
+    this.mode = "disconnected";
+    if (!laser) return;
     try {
-      await this.laser.close();
+      await laser.close();
     } catch {
       // connection already gone; nothing to release
     }
-    this.laser = null;
-    this.topic = null;
   }
 }
 

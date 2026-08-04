@@ -36,7 +36,7 @@ declare module "@guildai/agents-sdk" {
   export function agent<Definition>(definition: Definition): Definition
 }
 
-declare module "@guildai/oceanseth~humanharness-strategist/tool" {
+declare module "@guildai/human-harness~humanharness-strategist/tool" {
   const tool: import("@guildai/agents-sdk").AgentTool<
     HumanHarnessAgentInput,
     HumanHarnessSpecialistBrief<"strategist">
@@ -44,7 +44,7 @@ declare module "@guildai/oceanseth~humanharness-strategist/tool" {
   export default tool
 }
 
-declare module "@guildai/oceanseth~humanharness-historian/tool" {
+declare module "@guildai/human-harness~humanharness-historian/tool" {
   const tool: import("@guildai/agents-sdk").AgentTool<
     HumanHarnessAgentInput,
     HumanHarnessSpecialistBrief<"historian">
@@ -52,7 +52,7 @@ declare module "@guildai/oceanseth~humanharness-historian/tool" {
   export default tool
 }
 
-declare module "@guildai/oceanseth~humanharness-hypecaster/tool" {
+declare module "@guildai/human-harness~humanharness-hypecaster/tool" {
   const tool: import("@guildai/agents-sdk").AgentTool<
     HumanHarnessAgentInput,
     HumanHarnessSpecialistBrief<"hypecaster">
@@ -60,7 +60,7 @@ declare module "@guildai/oceanseth~humanharness-hypecaster/tool" {
   export default tool
 }
 
-declare module "@guildai/oceanseth~humanharness-scout/tool" {
+declare module "@guildai/human-harness~humanharness-scout/tool" {
   const tool: import("@guildai/agents-sdk").AgentTool<
     HumanHarnessAgentInput,
     HumanHarnessSpecialistBrief<"scout">

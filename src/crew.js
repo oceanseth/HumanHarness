@@ -1,9 +1,9 @@
 const { MiniMaxClient, parseJsonResponse } = require("./minimax");
 const { GuildClient } = require("./guild");
+const { asDependencyError } = require("./dependency-error");
 
 // Guild.ai routes each moment to the right persona. MiniMax writes that
 // persona's line locally so Guild never falls through to a non-MiniMax LLM.
-// If the Guild API trigger is unavailable, MiniMax also chooses the persona.
 // Voices are masky.ai personas; without a key the renderer speaks lines with
 // browser speechSynthesis using per-persona pitch/rate.
 
@@ -32,8 +32,21 @@ class Crew {
 
   routingStatus() {
     if (this.guildClient.isConfigured()) return "guild";
-    if (!this.config.guild?.apiKey) return "minimax";
-    return `minimax fallback (${this.guildClient.configurationError()})`;
+    return `blocked (${this.guildClient.configurationError()})`;
+  }
+
+  async connect() {
+    const configError = this.guildClient.configurationError();
+    if (configError) throw asDependencyError("Guild", new Error(configError));
+    try {
+      return await this.guildClient.probe();
+    } catch (error) {
+      throw asDependencyError("Guild", error);
+    }
+  }
+
+  async stop() {
+    this.guildClient.close();
   }
 
   observe(signal) {
@@ -56,23 +69,23 @@ class Crew {
       ]
         .flatMap((value) => String(value).toLowerCase().split(/\W+/))
         .filter((word) => word.length > 3);
-      const memories = await this.memory.recall(terms);
+      let memories;
+      try {
+        memories = await this.memory.recall(terms);
+      } catch (error) {
+        throw asDependencyError("FalkorDB", error);
+      }
 
       let route;
-      let guildError = null;
-      if (this.guildClient.isConfigured()) {
-        try {
-          route = await this.guildClient.route({
-            trigger,
-            goal: this.goal,
-            signals: this.recentSignals,
-            memories,
-          });
-        } catch (err) {
-          guildError = err.message;
-        }
-      } else if (this.config.guild?.apiKey) {
-        guildError = this.guildClient.configurationError();
+      try {
+        route = await this.guildClient.route({
+          trigger,
+          goal: this.goal,
+          signals: this.recentSignals,
+          memories,
+        });
+      } catch (error) {
+        throw asDependencyError("Guild", error);
       }
 
       const specialistLookup = route?.specialistBrief?.lookup || null;
@@ -81,30 +94,40 @@ class Crew {
         specialistLookupResult = await this.runLookup(specialistLookup);
       }
 
-      const out = await this.speakLocally(
-        trigger,
-        memories,
-        route?.persona,
-        route?.specialistBrief,
-        specialistLookupResult,
-      );
+      let out;
+      try {
+        out = await this.speakLocally(
+          trigger,
+          memories,
+          route.persona,
+          route.specialistBrief,
+          specialistLookupResult,
+        );
+      } catch (error) {
+        throw asDependencyError("MiniMax", error);
+      }
       if (!out) return null;
-      if (route?.persona) out.persona = route.persona;
+      out.persona = route.persona;
       if (!PERSONAS[out.persona]) out.persona = "strategist";
       out.line = String(out.line || "");
       out.lookup = specialistLookup || (out.lookup ? String(out.lookup) : null);
       out.remember = Array.isArray(out.remember) ? out.remember.map(String) : [];
-      out.routingSource = guildError
-        ? "minimax-fallback"
-        : route
-          ? "guild"
-          : "minimax";
-      if (route?.routingReason) out.routingReason = route.routingReason;
-      if (route?.specialistBrief) out.specialistBrief = route.specialistBrief;
-      if (guildError) out.routingWarning = guildError;
+      out.routingSource = "guild";
+      if (route.routingReason) out.routingReason = route.routingReason;
+      out.specialistBrief = route.specialistBrief;
 
       for (const fact of out.remember || []) {
-        await this.memory.record({ scene: fact, objects: [], events: [fact], ts: new Date().toISOString() });
+        try {
+          await this.memory.record({
+            kind: "crew-memory",
+            scene: fact,
+            objects: [],
+            events: [fact],
+            ts: new Date().toISOString(),
+          });
+        } catch (error) {
+          throw asDependencyError("FalkorDB", error);
+        }
       }
       if (specialistLookupResult) {
         out.lookupResult = specialistLookupResult;
@@ -112,8 +135,6 @@ class Crew {
         out.lookupResult = await this.runLookup(out.lookup);
       }
       return out;
-    } catch (err) {
-      return { persona: "strategist", line: "", error: err.message };
     } finally {
       this.busy = false;
     }
@@ -123,7 +144,7 @@ class Crew {
     try {
       return await this.actions.lookup(intent);
     } catch (error) {
-      return { mock: true, error: error.message, note: `RocketRide lookup failed: ${intent}` };
+      throw asDependencyError("RocketRide", error);
     }
   }
 

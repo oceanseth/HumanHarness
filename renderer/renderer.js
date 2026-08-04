@@ -38,13 +38,18 @@ window.hh.getConfig().then((cfg) => {
     : `twitch.tv/${cfg.twitchChannel} · stt: ${cfg.sttProvider}`;
 });
 
-$("start").onclick = () => {
-  window.hh.start();
+$("start").onclick = async () => {
   $("start").disabled = true;
-  $("stop").disabled = false;
+  try {
+    await window.hh.start();
+    $("stop").disabled = false;
+  } catch {
+    $("start").disabled = false;
+    $("stop").disabled = true;
+  }
 };
-$("stop").onclick = () => {
-  window.hh.stop();
+$("stop").onclick = async () => {
+  await window.hh.stop();
   $("start").disabled = false;
   $("stop").disabled = true;
 };

@@ -1,10 +1,10 @@
 "use agent"
 
 import { agent, type Task } from "@guildai/agents-sdk"
-import historianTool from "@guildai/oceanseth~humanharness-historian/tool"
-import hypecasterTool from "@guildai/oceanseth~humanharness-hypecaster/tool"
-import scoutTool from "@guildai/oceanseth~humanharness-scout/tool"
-import strategistTool from "@guildai/oceanseth~humanharness-strategist/tool"
+import historianTool from "@guildai/human-harness~humanharness-historian/tool"
+import hypecasterTool from "@guildai/human-harness~humanharness-hypecaster/tool"
+import scoutTool from "@guildai/human-harness~humanharness-scout/tool"
+import strategistTool from "@guildai/human-harness~humanharness-strategist/tool"
 import { z } from "zod"
 
 const personas = ["strategist", "historian", "hypecaster", "scout"] as const
@@ -90,7 +90,7 @@ export function selectSpecialist(input: Input): {
   }
 }
 
-export async function run(input: Input, task: Task<Tools>): Promise<Output> {
+async function run(input: Input, task: Task<Tools>): Promise<Output> {
   const selection = selectSpecialist(input)
   let brief: z.infer<typeof briefSchema>
 

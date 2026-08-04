@@ -5,6 +5,8 @@ const { Pipeline } = require("./src/pipeline");
 
 let win;
 let pipeline;
+let shutdownStarted = false;
+let shutdownComplete = false;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -48,6 +50,16 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  if (pipeline) pipeline.stop();
   app.quit();
+});
+
+app.on("before-quit", (event) => {
+  if (shutdownComplete || !pipeline) return;
+  event.preventDefault();
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  pipeline.stop().finally(() => {
+    shutdownComplete = true;
+    app.quit();
+  });
 });
