@@ -8,15 +8,33 @@ const VOICE_STYLE = {
   scout: { pitch: 1.1, rate: 1.0 },
 };
 let maskyVoices = false;
+let muted = false;
+const activeAudio = new Set();
 
 function speak(persona, line) {
-  if (maskyVoices) return; // real masky.ai playback would be wired here
+  if (maskyVoices || muted) return; // real masky.ai playback arrives via onAudio
   const u = new SpeechSynthesisUtterance(line);
   const style = VOICE_STYLE[persona] || {};
   u.pitch = style.pitch ?? 1;
   u.rate = style.rate ?? 1;
   speechSynthesis.speak(u);
 }
+
+function stopPlayback() {
+  speechSynthesis.cancel();
+  for (const audio of activeAudio) {
+    audio.pause();
+    audio.currentTime = 0;
+  }
+  activeAudio.clear();
+}
+
+$("mute").onclick = () => {
+  muted = !muted;
+  if (muted) stopPlayback();
+  $("mute").textContent = muted ? "Unmute" : "Mute";
+  $("mute").setAttribute("aria-pressed", String(muted));
+};
 
 function append(el, html, cap = 200) {
   const div = document.createElement("div");
@@ -90,9 +108,13 @@ window.hh.onCommentary((c) => {
 
 // masky.ai audio: play received URL (replaces speechSynthesis when masky is configured).
 window.hh.onAudio((audio) => {
-  if (!audio || !audio.audioUrl) return;
+  if (muted || !audio || !audio.audioUrl) return;
   const a = new Audio(audio.audioUrl);
-  a.play().catch(() => {}); // autoplay may be blocked — that's fine, the liveUrl is available
+  const cleanup = () => activeAudio.delete(a);
+  activeAudio.add(a);
+  a.addEventListener("ended", cleanup, { once: true });
+  a.addEventListener("error", cleanup, { once: true });
+  a.play().catch(cleanup); // autoplay may be blocked — the live URL remains available
 });
 
 window.hh.onStatus((msg) => append($("status"), esc(msg), 100));
