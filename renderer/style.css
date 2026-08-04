@@ -17,6 +17,7 @@ button {
   padding: 6px 14px; cursor: pointer; font-size: 13px;
 }
 button:disabled { background: #33404e; cursor: default; }
+button[aria-pressed="true"] { background: #a83c3c; }
 main { flex: 1; display: grid; grid-template-columns: 1fr 380px; gap: 12px; padding: 12px 16px; min-height: 0; }
 .feed { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
 #frame {
