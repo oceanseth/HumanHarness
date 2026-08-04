@@ -30,6 +30,8 @@ class Pipeline extends EventEmitter {
     this.ingest = new Ingest(this.config);
     this.voices = new Voices(this.config);
 
+    this.emit("status", `crew routing: ${this.crew.routingStatus()}`);
+
     const signalMode = await this.signals.connect();
     this.emit("status", `signals: ${signalMode}`);
 
@@ -117,6 +119,7 @@ class Pipeline extends EventEmitter {
     if (this.voices) this.voices.stop();
     if (this.signals) this.signals.close();
     if (this.actions) this.actions.stop();
+    if (this.memory) this.memory.close();
     this.emit("status", "pipeline stopped");
   }
 }

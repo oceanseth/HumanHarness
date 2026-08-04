@@ -2,7 +2,8 @@
 // them, persisted across sessions. Falls back to an in-process graph when
 // FalkorDB is unreachable, so the loop always runs.
 //
-// Uses the managed cloud instance via rediss:// (TLS) connection string.
+// Uses the managed cloud instance via the redis:// or rediss:// connection
+// string shown by its Connect page.
 // Connects with a 10s timeout — the instance may be provisioning, sleeping
 // (free tier: stops after 1 day idle, deleted after 7), or unavailable.
 // Startup never depends on FalkorDB; the in-memory fallback always serves.
@@ -35,6 +36,7 @@ class Memory {
   constructor(config) {
     this.config = config.falkor;
     this.fallback = new InMemoryGraph();
+    this.db = null;
     this.graph = null;
     this.mode = "in-memory";
   }
@@ -61,17 +63,19 @@ class Memory {
     try {
       const { FalkorDB } = require("falkordb");
 
-      const connect = FalkorDB.connect({ url });
+      const connect = FalkorDB.connect({ url, password: this.config.password || undefined });
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("connection timed out (instance may be provisioning or sleeping)")), CONNECT_TIMEOUT_MS),
       );
 
       const db = await Promise.race([connect, timeout]);
+      this.db = db;
       this.graph = db.selectGraph(this.config.graph);
 
       await this.graph.query("RETURN 1");
       this.mode = `falkordb (${host}/${this.config.graph})`;
     } catch (err) {
+      this.db = null;
       this.graph = null;
       this.mode = `in-memory (FalkorDB ${host}: ${err.message})`;
     }
@@ -112,6 +116,17 @@ class Memory {
       }
     }
     return this.fallback.recall(terms, limit);
+  }
+
+  async close() {
+    if (!this.db) return;
+    try {
+      await this.db.close();
+    } catch {
+      // already disconnected
+    }
+    this.db = null;
+    this.graph = null;
   }
 }
 
