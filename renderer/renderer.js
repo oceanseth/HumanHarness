@@ -38,13 +38,18 @@ window.hh.getConfig().then((cfg) => {
     : `twitch.tv/${cfg.twitchChannel} · stt: ${cfg.sttProvider}`;
 });
 
-$("start").onclick = () => {
-  window.hh.start();
+$("start").onclick = async () => {
   $("start").disabled = true;
-  $("stop").disabled = false;
+  try {
+    await window.hh.start();
+    $("stop").disabled = false;
+  } catch {
+    $("start").disabled = false;
+    $("stop").disabled = true;
+  }
 };
-$("stop").onclick = () => {
-  window.hh.stop();
+$("stop").onclick = async () => {
+  await window.hh.stop();
   $("start").disabled = false;
   $("stop").disabled = true;
 };
@@ -75,7 +80,9 @@ window.hh.onLabels((labels) => {
 window.hh.onTranscript((text) => append($("transcript"), `🎙 ${esc(text)}`));
 
 window.hh.onCommentary((c) => {
-  const lookup = c.lookupResult ? `<div class="lookup">↳ ${esc(c.lookupResult.note || "")}</div>` : "";
+  const lookupText = c.lookupResult?.note ||
+    (Array.isArray(c.lookupResult?.answers) ? c.lookupResult.answers.join(" ") : "");
+  const lookup = lookupText ? `<div class="lookup">↳ ${esc(lookupText)}</div>` : "";
   append($("commentary"), `<span class="who ${esc(c.persona)}">${esc(c.persona)}</span>${esc(c.line)}${lookup}`);
   // Only speak via speechSynthesis if masky is off; audio arrives via onAudio when masky is on.
   if (!maskyVoices) speak(c.persona, c.line);

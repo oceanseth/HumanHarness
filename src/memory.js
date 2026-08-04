@@ -1,55 +1,44 @@
-// FalkorDB graph memory: entities the crew has seen and relationships between
-// them, persisted across sessions. Falls back to an in-process graph when
-// FalkorDB is unreachable, so the loop always runs.
+// FalkorDB graph memory: every accepted LaserData signal is persisted here
+// before it becomes crew context. A missing or unhealthy graph blocks the
+// pipeline; there is no in-process substitute for the mandatory memory stage.
 //
 // Uses the managed cloud instance via the redis:// or rediss:// connection
 // string shown by its Connect page.
 // Connects with a 10s timeout — the instance may be provisioning, sleeping
 // (free tier: stops after 1 day idle, deleted after 7), or unavailable.
-// Startup never depends on FalkorDB; the in-memory fallback always serves.
+const { asDependencyError } = require("./dependency-error");
 
 const CONNECT_TIMEOUT_MS = 10_000;
 
-class InMemoryGraph {
-  constructor() {
-    this.observations = []; // { scene, objects, events, ts }
-  }
-  async record(obs) {
-    this.observations.push(obs);
-    if (this.observations.length > 500) this.observations.shift();
-  }
-  // Naive recall: past observations sharing an object/event term with the query.
-  async recall(terms, limit = 5) {
-    const t = terms.map((s) => s.toLowerCase());
-    return this.observations
-      .filter((o) =>
-        [...(o.objects || []), ...(o.events || []), o.scene || ""]
-          .join(" ").toLowerCase()
-          .split(/\W+/)
-          .some((w) => w && t.includes(w)),
-      )
-      .slice(-limit);
-  }
-}
+const withTimeout = (promise, ms) => {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("connection timed out (instance may be provisioning or sleeping)")),
+        ms,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+};
 
 class Memory {
-  constructor(config) {
+  constructor(config, options = {}) {
     this.config = config.falkor;
-    this.fallback = new InMemoryGraph();
+    this.loadFalkor = options.loadFalkor || (() => require("falkordb"));
+    this.connectTimeoutMs = options.connectTimeoutMs || CONNECT_TIMEOUT_MS;
     this.db = null;
     this.graph = null;
-    this.mode = "in-memory";
+    this.mode = "disconnected";
   }
 
-  // Connect to the managed FalkorDB instance. Raced against a timeout so
-  // pipeline startup is never blocked by a provisioning or sleeping instance.
-  // Returns a status string for the UI log.
+  // Connect to the managed FalkorDB instance and prove the graph is queryable.
   async connect() {
-    if (!this.config.url && !this.config.connectionString) return this.mode;
-
-    // Support both FALKORDB_URL (compact) and FALKORDB_CONNECTION_STRING.
     const url = this.config.url || this.config.connectionString || "";
-    if (!url) return this.mode;
+    if (!url) {
+      throw asDependencyError("FalkorDB", new Error("FALKORDB_URL is required"));
+    }
 
     let host = "unknown";
     try {
@@ -61,31 +50,83 @@ class Memory {
     }
 
     try {
-      const { FalkorDB } = require("falkordb");
-
-      const connect = FalkorDB.connect({ url, password: this.config.password || undefined });
-      const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("connection timed out (instance may be provisioning or sleeping)")), CONNECT_TIMEOUT_MS),
-      );
-
-      const db = await Promise.race([connect, timeout]);
-      this.db = db;
-      this.graph = db.selectGraph(this.config.graph);
-
-      await this.graph.query("RETURN 1");
+      const { FalkorDB } = this.loadFalkor();
+      let provisionalDb = null;
+      let cancelled = false;
+      let closed = false;
+      const closeProvisional = async () => {
+        if (!provisionalDb || closed) return;
+        closed = true;
+        await provisionalDb.close().catch(() => {});
+      };
+      const opening = (async () => {
+        provisionalDb = await FalkorDB.connect({
+          url,
+          password: this.config.password || undefined,
+        });
+        if (cancelled) {
+          await closeProvisional();
+          throw new Error("connection cancelled after timeout");
+        }
+        const graph = provisionalDb.selectGraph(this.config.graph);
+        await graph.query("RETURN 1");
+        if (cancelled) {
+          await closeProvisional();
+          throw new Error("health check cancelled after timeout");
+        }
+        return { db: provisionalDb, graph };
+      })();
+      let opened;
+      try {
+        opened = await withTimeout(opening, this.connectTimeoutMs);
+      } catch (error) {
+        cancelled = true;
+        await closeProvisional();
+        opening.then((late) => late.db.close().catch(() => {})).catch(() => {});
+        throw error;
+      }
+      this.db = opened.db;
+      this.graph = opened.graph;
       this.mode = `falkordb (${host}/${this.config.graph})`;
     } catch (err) {
+      if (this.db) {
+        try {
+          await this.db.close();
+        } catch {
+          // The failed connection has nothing else to release.
+        }
+      }
       this.db = null;
       this.graph = null;
-      this.mode = `in-memory (FalkorDB ${host}: ${err.message})`;
+      this.mode = "disconnected";
+      throw asDependencyError("FalkorDB", err);
     }
     return this.mode;
   }
 
   async record(obs) {
-    await this.fallback.record(obs);
-    if (!this.graph) return;
+    if (!this.graph) {
+      throw asDependencyError("FalkorDB", new Error("graph is not connected"));
+    }
     try {
+      const searchText = [
+        obs.scene || "",
+        obs.text || "",
+        ...(obs.objects || []),
+        ...(obs.events || []),
+      ].join(" ");
+      await this.graph.query(
+        "CREATE (:Signal {kind: $kind, scene: $scene, text: $text, searchText: $searchText, ts: $ts})",
+        {
+          params: {
+            kind: obs.kind || "unknown",
+            scene: obs.scene || "",
+            text: obs.text || "",
+            searchText,
+            ts: obs.ts || "",
+          },
+        },
+      );
       for (const name of obs.objects || []) {
         await this.graph.query(
           "MERGE (e:Entity {name: $name}) MERGE (s:Scene {desc: $scene}) MERGE (e)-[:SEEN_IN {ts: $ts}]->(s)",
@@ -98,35 +139,38 @@ class Memory {
           { params: { ev, scene: obs.scene || "", ts: obs.ts || "" } },
         );
       }
-    } catch {
-      // graph write failures fall back silently; in-memory copy already has it
+    } catch (err) {
+      throw asDependencyError("FalkorDB", err);
     }
   }
 
   async recall(terms, limit = 5) {
-    if (this.graph) {
-      try {
-        const res = await this.graph.query(
-          "MATCH (e:Entity)-[r:SEEN_IN]->(s:Scene) WHERE toLower(e.name) IN $terms RETURN e.name AS name, s.desc AS scene, r.ts AS ts ORDER BY r.ts DESC LIMIT $limit",
-          { params: { terms: terms.map((t) => t.toLowerCase()), limit } },
-        );
-        if (res.data && res.data.length) return res.data;
-      } catch {
-        // fall through to in-memory recall
-      }
+    if (!this.graph) {
+      throw asDependencyError("FalkorDB", new Error("graph is not connected"));
     }
-    return this.fallback.recall(terms, limit);
+    if (!terms.length) return [];
+    try {
+      const res = await this.graph.query(
+        "MATCH (s:Signal) WHERE any(term IN $terms WHERE toLower(s.searchText) CONTAINS term) RETURN s.kind AS kind, s.scene AS scene, s.text AS text, s.ts AS ts ORDER BY s.ts DESC LIMIT $limit",
+        { params: { terms: terms.map((term) => term.toLowerCase()), limit } },
+      );
+      return Array.isArray(res.data) ? res.data : [];
+    } catch (err) {
+      throw asDependencyError("FalkorDB", err);
+    }
   }
 
   async close() {
-    if (!this.db) return;
+    const db = this.db;
+    this.db = null;
+    this.graph = null;
+    this.mode = "disconnected";
+    if (!db) return;
     try {
-      await this.db.close();
+      await db.close();
     } catch {
       // already disconnected
     }
-    this.db = null;
-    this.graph = null;
   }
 }
 

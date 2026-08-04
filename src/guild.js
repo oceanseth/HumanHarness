@@ -1,4 +1,6 @@
 const DEFAULT_BASE_URL = "https://app.guild.ai";
+const GUILD_PERSONAS = new Set(["strategist", "historian", "hypecaster", "scout"]);
+const GUILD_PRIORITIES = new Set(["low", "normal", "high"]);
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -15,20 +17,90 @@ const parseJsonText = (value) => {
   }
 };
 
-const normalizeGuildOutput = (value) => {
+const unwrapGuildOutput = (value) => {
   let candidate = parseJsonText(value);
-  if (candidate && candidate.output !== undefined) candidate = parseJsonText(candidate.output);
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) break;
+    if (candidate.output === undefined) break;
+    candidate = parseJsonText(candidate.output);
+  }
+  return candidate;
+};
+
+const normalizeSpecialistBrief = (value, persona) => {
+  const brief = parseJsonText(value);
+  if (!brief || typeof brief !== "object" || Array.isArray(brief)) {
+    throw new Error("Guild specialist returned an invalid brief");
+  }
+
+  const briefPersona = String(brief.persona || "");
+  if (briefPersona !== persona) {
+    throw new Error("Guild specialist brief does not match the routed persona");
+  }
+
+  const priority = brief.priority;
+  if (typeof priority !== "string" || !GUILD_PRIORITIES.has(priority)) {
+    throw new Error("Guild specialist brief has an invalid priority");
+  }
+  if (
+    typeof brief.decision !== "string" ||
+    typeof brief.summary !== "string" ||
+    !Array.isArray(brief.evidence) ||
+    !brief.evidence.every((item) => typeof item === "string") ||
+    !Array.isArray(brief.directives) ||
+    !brief.directives.every((item) => typeof item === "string") ||
+    (brief.lookup !== null && brief.lookup !== undefined && typeof brief.lookup !== "string")
+  ) {
+    throw new Error("Guild specialist brief has invalid structured fields");
+  }
+
+  return {
+    persona: briefPersona,
+    decision: brief.decision,
+    priority,
+    summary: brief.summary,
+    evidence: brief.evidence,
+    directives: brief.directives,
+    lookup: brief.lookup ?? null,
+  };
+};
+
+const normalizeGuildOutput = (value) => {
+  const candidate = unwrapGuildOutput(value);
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new Error("Guild returned an invalid routing result");
   }
 
   const persona = String(candidate.persona || "");
   if (!persona) throw new Error("Guild routing result is missing persona");
+  if (!GUILD_PERSONAS.has(persona)) throw new Error(`Guild returned unknown persona: ${persona}`);
+  const specialist = String(candidate.specialist || "");
+  if (!specialist) throw new Error("Guild routing result is missing the executed specialist");
+  if (specialist !== persona) {
+    throw new Error("Guild routing result does not match the dispatched specialist");
+  }
+  if (candidate.brief === undefined) {
+    throw new Error("Guild routing result is missing the specialist brief");
+  }
 
-  return {
+  const result = {
     persona,
+    specialist,
     routingReason: candidate.rationale ? String(candidate.rationale) : "",
+    specialistBrief: normalizeSpecialistBrief(candidate.brief, persona),
   };
+  return result;
+};
+
+const isRootTaskEvent = (event) => {
+  if (!event?.task || typeof event.task !== "object") return true;
+  if (Object.prototype.hasOwnProperty.call(event.task, "parent_task_id")) {
+    return event.task.parent_task_id === null;
+  }
+  if (Object.prototype.hasOwnProperty.call(event.task, "parent_task")) {
+    return event.task.parent_task === null;
+  }
+  return true;
 };
 
 const eventText = (event) => {
@@ -58,6 +130,8 @@ class GuildClient {
     this.pollIntervalMs = config.pollIntervalMs ?? 1000;
     this.fetch = options.fetch || globalThis.fetch;
     this.sleep = options.sleep || delay;
+    this.activeControllers = new Set();
+    this.closed = false;
   }
 
   configurationError() {
@@ -69,6 +143,13 @@ class GuildClient {
     if (!this.owner) return "GUILD_WORKSPACE_OWNER is not configured";
     if (!this.workspace) return "GUILD_WORKSPACE is not configured";
     if (typeof this.fetch !== "function") return "This Node.js runtime does not provide fetch";
+    try {
+      if (new URL(this.baseUrl).protocol !== "https:") {
+        return "GUILD_BASE_URL must use HTTPS before API trigger credentials can be sent";
+      }
+    } catch {
+      return "GUILD_BASE_URL must be a valid HTTPS URL";
+    }
     return null;
   }
 
@@ -76,45 +157,136 @@ class GuildClient {
     return this.configurationError() === null;
   }
 
-  async request(path, options = {}) {
-    const response = await this.fetch(`${this.baseUrl}${path}`, {
-      ...options,
-      headers: {
-        Authorization: `Basic ${Buffer.from(this.apiKey).toString("base64")}`,
-        Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...options.headers,
-      },
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      const detail = payload?.detail || payload?.message || response.statusText || "request failed";
-      throw new Error(`Guild request failed (${response.status}): ${detail}`);
+  assertOpen() {
+    if (this.closed) throw new Error("Guild client stopped");
+  }
+
+  async request(path, options = {}, timeoutMs = this.timeoutMs) {
+    this.assertOpen();
+    const controller = new AbortController();
+    this.activeControllers.add(controller);
+    const timer = setTimeout(
+      () => controller.abort(new Error(`Guild request timed out after ${timeoutMs}ms`)),
+      Math.max(1, timeoutMs),
+    );
+    try {
+      const response = await this.fetch(`${this.baseUrl}${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          Authorization: `Basic ${Buffer.from(this.apiKey).toString("base64")}`,
+          Accept: "application/json",
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...options.headers,
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const detail = payload?.detail || payload?.message || response.statusText || "request failed";
+        throw new Error(`Guild request failed (${response.status}): ${detail}`);
+      }
+      return payload;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        const reason = controller.signal.reason;
+        throw reason instanceof Error
+          ? reason
+          : new Error(`Guild request timed out after ${timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      this.activeControllers.delete(controller);
     }
-    return payload;
+  }
+
+  close() {
+    this.closed = true;
+    for (const controller of this.activeControllers) {
+      controller.abort(new Error("Guild client stopped"));
+    }
+    this.activeControllers.clear();
   }
 
   async route(agentInput) {
+    this.assertOpen();
     const configError = this.configurationError();
     if (configError) throw new Error(configError);
 
+    const deadline = Date.now() + this.timeoutMs;
     const owner = encodeURIComponent(this.owner);
     const workspace = encodeURIComponent(this.workspace);
     const session = await this.request(`/api/workspaces/${owner}/${workspace}/sessions`, {
       method: "POST",
       body: JSON.stringify({ session_type: "api_trigger", agent_input: agentInput }),
-    });
+    }, Math.max(1, deadline - Date.now()));
     if (!session?.id) throw new Error("Guild did not return a session id");
-    return this.waitForResult(session.id);
+    return this.waitForResult(session.id, deadline);
   }
 
-  async waitForResult(sessionId) {
-    const startedAt = Date.now();
+  async probe() {
+    const probes = [
+      ["strategist", {
+        trigger: "plan an approach",
+        goal: "survive",
+        signals: [],
+        memories: [],
+      }],
+      ["historian", {
+        trigger: "remember the same pattern again",
+        goal: "",
+        signals: [],
+        memories: ["last run"],
+      }],
+      ["hypecaster", {
+        trigger: "tick",
+        goal: "",
+        signals: [{ events: ["victory"] }],
+        memories: [],
+      }],
+      ["scout", {
+        trigger: "tick",
+        goal: "",
+        signals: [{ events: ["next path"] }],
+        memories: [],
+      }],
+    ];
+    const routes = probes.map(async ([expected, input]) => {
+      const result = await this.route(input);
+      if (
+        !result.specialistBrief ||
+        result.persona !== expected ||
+        result.specialist !== expected ||
+        result.specialistBrief.persona !== expected
+      ) {
+        throw new Error(`Guild probe did not execute the ${expected} specialist agent`);
+      }
+      return expected;
+    });
+    let results;
+    try {
+      results = await Promise.all(routes);
+    } catch (error) {
+      // A failed canary invalidates readiness for the whole Guild stage. Keep
+      // sibling pollers from issuing another request after fail-fast returns.
+      this.close();
+      throw error;
+    }
+    if (results.length !== probes.length) {
+      throw new Error("Guild probe did not execute every specialist agent");
+    }
+    return `guild (${results.join(", ")})`;
+  }
 
-    while (Date.now() - startedAt < this.timeoutMs) {
+  async waitForResult(sessionId, deadline = Date.now() + this.timeoutMs) {
+    while (Date.now() < deadline) {
+      this.assertOpen();
       const query = new URLSearchParams({ limit: "1000" });
+      const remainingMs = Math.max(1, deadline - Date.now());
       const payload = await this.request(
         `/api/sessions/${encodeURIComponent(sessionId)}/events?${query}`,
+        {},
+        remainingMs,
       );
       const events = Array.isArray(payload)
         ? payload
@@ -123,6 +295,7 @@ class GuildClient {
           : [];
 
       for (const event of events) {
+        if (!isRootTaskEvent(event)) continue;
         const failure = eventError(event);
         if (failure) throw new Error(`Guild agent failed: ${failure}`);
 
@@ -137,11 +310,18 @@ class GuildClient {
         }
       }
 
-      await this.sleep(this.pollIntervalMs);
+      const sleepMs = Math.min(this.pollIntervalMs, Math.max(0, deadline - Date.now()));
+      await this.sleep(sleepMs);
+      this.assertOpen();
     }
 
     throw new Error(`Guild agent timed out after ${this.timeoutMs}ms`);
   }
 }
 
-module.exports = { GuildClient, normalizeGuildOutput };
+module.exports = {
+  GuildClient,
+  isRootTaskEvent,
+  normalizeGuildOutput,
+  normalizeSpecialistBrief,
+};

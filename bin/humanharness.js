@@ -6,6 +6,15 @@ const usage = "Usage: humanharness replay <fixture.jsonl>";
 
 async function main(argv = process.argv.slice(2), output = console) {
   const [command, fixturePath, ...extra] = argv;
+  const helpRequested =
+    (argv.length === 1 && (command === "--help" || command === "-h")) ||
+    (command === "replay" &&
+      extra.length === 0 &&
+      (fixturePath === "--help" || fixturePath === "-h"));
+  if (helpRequested) {
+    output.log(usage);
+    return 0;
+  }
   if (command !== "replay" || !fixturePath || extra.length) {
     output.error(usage);
     return 1;
