@@ -34,7 +34,7 @@ Built for the **Memory Meets Motion** hackathon — AI that doesn't just react t
 | Real-time data | **LaserData** | Ingests the labeled frame stream + human speech events so agents react to what's happening *now* |
 | Memory | **FalkorDB** | Graph memory of everything the crew has seen — entities, places, plays, decisions, outcomes — so advice compounds across sessions |
 | Motion / orchestration | **RocketRide.ai** | Turns memory into action: wires tool calls, external API lookups, and multi-step assists |
-| Multi-agent collaboration | **Guild.ai** | Coordinates the specialist personas (Strategist, Historian, Hype-caster, Scout) and keeps the human in the loop |
+| Multi-agent collaboration | **Guild.ai** | Runs a router agent that dispatches to independently deployed Strategist, Historian, Hype-caster, and Scout agents |
 
 ## Architecture (MVP)
 
@@ -59,7 +59,10 @@ Twitch stream (video + audio)
           RocketRide.ai ── orchestrates decisions: lookups, tools, multi-step assists
                  │
                  ▼
-             Guild.ai  ── routes work between personas, human-in-the-loop turns
+             Guild.ai  ── router agent invokes one specialist agent as a typed tool
+                 │
+                 ▼
+          local MiniMax ── writes the selected specialist's commentary
                  │
                  ▼
         masky.ai personas (voice + character) ──► TTS commentary back to the human
@@ -72,8 +75,8 @@ The core loop:
 3. **Stream** — labeled frames and speech transcripts are published to **LaserData** as the live signal feed.
 4. **Remember** — a consumer folds LaserData events into a **FalkorDB** graph: entities (bosses, streets, items, people) and relationships (defeated-by, located-in, mentioned-at), persisted across sessions.
 5. **Act** — **RocketRide.ai** takes "what's happening + what we remember" and orchestrates actions: wiki lookups, map queries, strategy tools.
-6. **Collaborate** — **Guild.ai** hands the result to the right persona (Strategist for tactics, Historian for lore/memory callbacks, Hype-caster for color, Scout for what's ahead) and manages agent↔agent and agent↔human turns.
-7. **Speak** — the chosen persona renders its line through its **masky.ai** voice, back into the stream/overlay.
+6. **Collaborate** — a **Guild.ai** router deterministically selects and invokes one independently deployed specialist agent (Strategist for tactics, Historian for memory callbacks, Hype-caster for color, or Scout for what's ahead). The specialist returns a structured decision brief without calling a Guild LLM.
+7. **Speak** — local **MiniMax** turns that structured brief into the selected persona's line, which is rendered through its **masky.ai** voice back into the stream/overlay.
 
 ## Setup
 
@@ -133,9 +136,11 @@ MASKY_API_KEY=mky_...                                          # plus MASKY_AVAT
 ```
 
 Guild routing uses an [API trigger](https://docs.guild.ai/platform/triggers#api-triggers).
-Create and publish the agent in `guild-agent/`, install it in a workspace, create
-an API trigger for it, then configure the combined trigger credentials and the
-workspace URL slugs:
+Create and publish the four specialists in `guild-agents/` first, publish the
+router with their generated `/tool` packages as dependencies, install the router
+in a workspace, and create an API trigger on it. The complete publish order and
+owner-name substitutions are documented in [`guild-agents/README.md`](./guild-agents/README.md).
+Then configure the combined trigger credentials and workspace URL slugs:
 
 ```ini
 GUILD_API_KEY=<api_key_id>:<api_key_secret>
@@ -144,9 +149,10 @@ GUILD_WORKSPACE=<workspace_name>
 ```
 
 The Agent SDK stays inside Guild's runtime; Electron calls only the documented
-sessions/events HTTP API. Guild deterministically selects the persona, then
-MiniMax writes that persona's line locally. If Guild is missing, misconfigured,
-unavailable, or times out, MiniMax also selects the persona for that turn.
+sessions/events HTTP API. Guild's router invokes the selected specialist and
+returns its deterministic brief, then MiniMax writes that persona's line locally.
+No Guild agent calls `task.llm`. If Guild is missing, misconfigured, unavailable,
+or times out, MiniMax also selects the persona for that turn.
 
 ### 4. Run
 
@@ -182,14 +188,14 @@ src/
   signals.js      # LaserData publisher (local event bus fallback)
   memory.js       # FalkorDB graph writer/reader (in-memory fallback)
   actions.js      # RocketRide.ai orchestration (mock fallback)
-  guild.js        # Guild API-trigger client (local MiniMax fallback in crew.js)
-  crew.js         # Guild routing + persona prompts + masky.ai voices
+  guild.js        # Guild router API-trigger client (local MiniMax fallback in crew.js)
+  crew.js         # Specialist brief → local MiniMax persona prompt + masky.ai voice
   moments.js      # provider-neutral moment contracts + runtime validation
   replay.js       # deterministic offline JSONL replay
 bin/
   humanharness.js # Node CLI for replaying recorded moments
 test/             # contract, replay, CLI tests + boss-fight fixture
-guild-agent/      # TypeScript agent deployed into Guild's runtime
+guild-agents/     # Five independently deployable Guild TypeScript agent projects
 ride.pipe         # RocketRide Scout lookup pipeline (MiniMax credentials injected at runtime)
 .env.example
 ```

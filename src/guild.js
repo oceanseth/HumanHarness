@@ -1,4 +1,6 @@
 const DEFAULT_BASE_URL = "https://app.guild.ai";
+const GUILD_PERSONAS = new Set(["strategist", "historian", "hypecaster", "scout"]);
+const GUILD_PRIORITIES = new Set(["low", "normal", "high"]);
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -15,20 +17,75 @@ const parseJsonText = (value) => {
   }
 };
 
-const normalizeGuildOutput = (value) => {
+const unwrapGuildOutput = (value) => {
   let candidate = parseJsonText(value);
-  if (candidate && candidate.output !== undefined) candidate = parseJsonText(candidate.output);
+  for (let depth = 0; depth < 3; depth += 1) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) break;
+    if (candidate.output === undefined) break;
+    candidate = parseJsonText(candidate.output);
+  }
+  return candidate;
+};
+
+const normalizeSpecialistBrief = (value, persona) => {
+  const brief = parseJsonText(value);
+  if (!brief || typeof brief !== "object" || Array.isArray(brief)) {
+    throw new Error("Guild specialist returned an invalid brief");
+  }
+
+  const briefPersona = String(brief.persona || "");
+  if (briefPersona !== persona) {
+    throw new Error("Guild specialist brief does not match the routed persona");
+  }
+
+  const priority = brief.priority;
+  if (typeof priority !== "string" || !GUILD_PRIORITIES.has(priority)) {
+    throw new Error("Guild specialist brief has an invalid priority");
+  }
+  if (
+    typeof brief.decision !== "string" ||
+    typeof brief.summary !== "string" ||
+    !Array.isArray(brief.evidence) ||
+    !brief.evidence.every((item) => typeof item === "string") ||
+    !Array.isArray(brief.directives) ||
+    !brief.directives.every((item) => typeof item === "string") ||
+    (brief.lookup !== null && brief.lookup !== undefined && typeof brief.lookup !== "string")
+  ) {
+    throw new Error("Guild specialist brief has invalid structured fields");
+  }
+
+  return {
+    persona: briefPersona,
+    decision: brief.decision,
+    priority,
+    summary: brief.summary,
+    evidence: brief.evidence,
+    directives: brief.directives,
+    lookup: brief.lookup ?? null,
+  };
+};
+
+const normalizeGuildOutput = (value) => {
+  const candidate = unwrapGuildOutput(value);
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new Error("Guild returned an invalid routing result");
   }
 
   const persona = String(candidate.persona || "");
   if (!persona) throw new Error("Guild routing result is missing persona");
+  if (!GUILD_PERSONAS.has(persona)) throw new Error(`Guild returned unknown persona: ${persona}`);
+  if (candidate.specialist && String(candidate.specialist) !== persona) {
+    throw new Error("Guild routing result does not match the dispatched specialist");
+  }
 
-  return {
+  const result = {
     persona,
     routingReason: candidate.rationale ? String(candidate.rationale) : "",
   };
+  if (candidate.brief !== undefined) {
+    result.specialistBrief = normalizeSpecialistBrief(candidate.brief, persona);
+  }
+  return result;
 };
 
 const eventText = (event) => {
@@ -144,4 +201,4 @@ class GuildClient {
   }
 }
 
-module.exports = { GuildClient, normalizeGuildOutput };
+module.exports = { GuildClient, normalizeGuildOutput, normalizeSpecialistBrief };

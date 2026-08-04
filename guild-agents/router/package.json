@@ -1,0 +1,12 @@
+{
+  "name": "humanharness-router",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@guildai/oceanseth~humanharness-historian": "^1.0.0",
+    "@guildai/oceanseth~humanharness-hypecaster": "^1.0.0",
+    "@guildai/oceanseth~humanharness-scout": "^1.0.0",
+    "@guildai/oceanseth~humanharness-strategist": "^1.0.0"
+  }
+}
