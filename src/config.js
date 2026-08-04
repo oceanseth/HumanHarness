@@ -10,6 +10,7 @@ const bool = (v, dflt = false) =>
 class ConfigError extends TypeError {}
 
 const STT_PROVIDERS = new Set(["deepgram", "whisper", "none"]);
+const MASKY_PERSONAS = ["strategist", "historian", "hypecaster", "scout"];
 
 const positiveInt = (value, dflt, name) => {
   if (value === undefined || value.trim() === "") return dflt;
@@ -41,6 +42,20 @@ const laserConnectionString = () => {
   const { LASERDATA_USERNAME: user, LASERDATA_PASSWORD: pwd } = process.env;
   return user && pwd ? `${user}:${pwd}@${host}` : "";
 };
+
+const defaultMaskyAvatar = {
+  avatarId: process.env.MASKY_AVATAR_ID || "",
+  avatarOwnerUserId: process.env.MASKY_AVATAR_OWNER_USER_ID || "",
+};
+
+const maskyAvatars = Object.fromEntries(MASKY_PERSONAS.map((persona) => {
+  const prefix = `MASKY_${persona.toUpperCase()}`;
+  return [persona, {
+    avatarId: process.env[`${prefix}_AVATAR_ID`] || defaultMaskyAvatar.avatarId,
+    avatarOwnerUserId:
+      process.env[`${prefix}_AVATAR_OWNER_USER_ID`] || defaultMaskyAvatar.avatarOwnerUserId,
+  }];
+}));
 
 module.exports = {
   twitchChannel: process.env.TWITCH_CHANNEL || "",
@@ -86,6 +101,7 @@ module.exports = {
   maskyApiKey: process.env.MASKY_API_KEY || "",
   maskyAvatarId: process.env.MASKY_AVATAR_ID || "",
   maskyAvatarOwnerUserId: process.env.MASKY_AVATAR_OWNER_USER_ID || "",
+  maskyAvatars,
 
   stt: {
     provider: sttProvider(process.env.STT_PROVIDER),

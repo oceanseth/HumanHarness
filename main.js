@@ -45,7 +45,11 @@ app.whenReady().then(() => {
     twitchChannel: config.twitchChannel,
     mockIngest: config.mockIngest,
     sttProvider: config.stt.provider,
-    maskyVoices: Boolean(config.maskyApiKey && config.maskyAvatarId && config.maskyAvatarOwnerUserId),
+    maskyPersonas: config.maskyApiKey
+      ? Object.entries(config.maskyAvatars)
+        .filter(([, avatar]) => avatar.avatarId && avatar.avatarOwnerUserId)
+        .map(([persona]) => persona)
+      : [],
   }));
 });
 
