@@ -282,6 +282,37 @@ test("Pipeline converts a runtime LaserData failure into a full blocker", async 
   ]);
 });
 
+test("Pipeline skips a frame while MiniMax vision is already in flight", async () => {
+  const visionGate = deferred();
+  const harness = createHarness();
+  let calls = 0;
+  harness.factories.perceiver = () => ({
+    async label() {
+      calls += 1;
+      if (calls === 1) {
+        await visionGate.promise;
+        return { scene: "arena", objects: [], events: [] };
+      }
+      return null;
+    },
+  });
+  const pipeline = new Pipeline(config, harness.factories);
+  await pipeline.start();
+  const run = pipeline.run;
+
+  run.lastLabel = 0;
+  const firstFrame = pipeline.handleFrame(Buffer.from("first"), run);
+  await new Promise((resolve) => setImmediate(resolve));
+  run.lastLabel = 0;
+  await pipeline.handleFrame(Buffer.from("second"), run);
+
+  assert.equal(pipeline.state, "running");
+  assert.equal(calls, 2);
+  visionGate.resolve();
+  await firstFrame;
+  await pipeline.stop();
+});
+
 test("Concurrent Pipeline starts share one readiness sequence", async () => {
   const gate = deferred();
   const { factories, log } = createHarness({ connectGate: { service: "LaserData", gate } });
