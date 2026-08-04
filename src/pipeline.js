@@ -262,7 +262,10 @@ class Pipeline extends EventEmitter {
     run.lastLabel = now;
     const labels = await run.perceiver.label(jpeg);
     if (!this.isActive(run)) return;
-    if (!labels) throw asDependencyError("MiniMax", new Error("vision returned no labels"));
+    // A slower MiniMax vision request can overlap a later frame. Perceiver
+    // returns null for that backpressure case while the real request remains
+    // in flight; only an explicit provider error blocks the mandatory chain.
+    if (!labels) return;
     if (labels.error) throw asDependencyError("MiniMax", new Error(labels.error));
     this.emit("labels", labels);
     await this.acceptSignal("labels", labels, run);
