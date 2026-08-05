@@ -138,7 +138,26 @@ Additional configuration includes:
 ```ini
 MASKY_API_KEY=mky_...                                          # plus MASKY_<PERSONA>_AVATAR_ID and _OWNER_USER_ID
 TWITCH_CHANNEL=your_channel_name                               # unless MOCK_INGEST=true
+VIEWER_DELAY_MS=120000                                         # delayed spectate viewer; 0 = live frame preview
 ```
+
+### Delayed spectate viewer
+
+With a real Twitch channel, the dashboard plays actual stream video + audio
+(not the 2 fps frame grabs) delayed by `VIEWER_DELAY_MS` (default 120 s). The
+pipeline keeps perceiving at the live edge; ffmpeg additionally stream-copies
+the feed into a rolling local HLS window that the renderer plays through
+hls.js at live-minus-delay. Every signal is stamped with its capture time, and
+each crew line — text and masky.ai clip — is scheduled onto
+`capturedAt + VIEWER_DELAY_MS`, so commentary lands exactly on the moment the
+viewer is watching. Clips that finish rendering more than 5 s after their slot
+are dropped with a "missed moment" note; overlapping clips queue, and stream
+audio ducks while a clip speaks. Replies to the "talk to the crew" box stay
+immediate — that is a conversation with you, not stream commentary.
+
+Rendering a line takes roughly 20–60 s end to end (STT segmentation, Guild
+routing, MiniMax, masky audio), so keep the delay at 90 s or more; `0` restores
+the previous live behavior (frame preview, immediate commentary).
 
 Guild routing uses an [API trigger](https://docs.guild.ai/platform/triggers#api-triggers).
 Create and publish the four specialists in `guild-agents/` first, publish the

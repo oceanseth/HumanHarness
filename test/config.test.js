@@ -11,6 +11,7 @@ const configKeys = [
   "COMMENTARY_INTERVAL_MS",
   "GUILD_TIMEOUT_MS",
   "GUILD_POLL_INTERVAL_MS",
+  "VIEWER_DELAY_MS",
 ];
 const inspectConfig = `
   const config = require("./src/config");
@@ -21,6 +22,7 @@ const inspectConfig = `
     commentary: config.commentaryIntervalMs,
     guildTimeout: config.guild.timeoutMs,
     guildPoll: config.guild.pollIntervalMs,
+    viewerDelay: config.viewerDelayMs,
   }));
 `;
 
@@ -46,6 +48,7 @@ test("config preserves live defaults for empty STT and interval settings", () =>
     commentary: 8000,
     guildTimeout: 60000,
     guildPoll: 1000,
+    viewerDelay: 120000,
   });
 });
 
@@ -83,8 +86,25 @@ test("config parses positive timing intervals", () => {
     commentary: 3000,
     guildTimeout: 12000,
     guildPoll: 250,
+    viewerDelay: 120000,
   });
 });
+
+test("config accepts a zero viewer delay (live mode) and custom delays", () => {
+  for (const [input, expected] of [["0", 0], ["60000", 60000]]) {
+    const run = readConfig({ VIEWER_DELAY_MS: input });
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(JSON.parse(run.stdout).viewerDelay, expected);
+  }
+});
+
+for (const value of ["-1", "2 minutes"]) {
+  test(`config rejects invalid VIEWER_DELAY_MS ${JSON.stringify(value)}`, () => {
+    const run = readConfig({ VIEWER_DELAY_MS: value });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /VIEWER_DELAY_MS must be a non-negative integer/);
+  });
+}
 
 for (const [name, value] of [
   ["FRAME_INTERVAL_MS", "0"],

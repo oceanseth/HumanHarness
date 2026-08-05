@@ -31,6 +31,11 @@ class Pipeline extends EventEmitter {
   constructor(config, factories = {}) {
     super();
     this.config = config;
+    // Effective spectate delay: mock ingest has no video to delay, so it and
+    // the no-channel case always run live.
+    this.viewerDelayMs = config.mockIngest || !config.twitchChannel
+      ? 0
+      : config.viewerDelayMs || 0;
     this.factories = {
       signals: factories.signals || ((value) => new SignalStream(value)),
       memory: factories.memory || ((value) => new Memory(value)),
@@ -70,6 +75,7 @@ class Pipeline extends EventEmitter {
       timer: null,
       teardownPromise: null,
       lastLabel: 0,
+      lastCapturedAt: 0,
     };
   }
 
@@ -223,9 +229,14 @@ class Pipeline extends EventEmitter {
   }
 
   bindRuntime(run) {
-    run.ingest.on("frame", (jpeg) => this.track(run, this.handleFrame(jpeg, run)));
+    run.ingest.on("frame", (jpeg, capturedAt) =>
+      this.track(run, this.handleFrame(jpeg, capturedAt, run)));
     run.ingest.on("mock-labels", (labels) => this.track(run, this.handleLabels(labels, run)));
-    run.ingest.on("audio", (wavPath) => this.track(run, this.handleAudio(wavPath, run)));
+    run.ingest.on("audio", (wavPath, capturedAt) =>
+      this.track(run, this.handleAudio(wavPath, capturedAt, run)));
+    run.ingest.on("viewer", (viewer) => {
+      if (this.isActive(run)) this.emit("viewer", { ...viewer, delayMs: this.viewerDelayMs });
+    });
     run.ingest.on("status", (message) => {
       if (this.isActive(run)) this.emit("status", message);
     });
@@ -248,15 +259,19 @@ class Pipeline extends EventEmitter {
     if (!this.isActive(run)) return null;
     const event = await run.signals.publish(kind, payload);
     if (!this.isActive(run)) return null;
+    if (payload.capturedAt) run.lastCapturedAt = payload.capturedAt;
     await run.memory.record(event);
     if (!this.isActive(run)) return null;
     run.crew.observe(event);
     return event;
   }
 
-  async handleFrame(jpeg, run) {
+  async handleFrame(jpeg, capturedAt, run) {
     if (!this.isActive(run)) return;
-    this.emit("frame", jpeg.toString("base64"));
+    capturedAt = capturedAt || Date.now();
+    // In delayed-viewer mode the renderer plays the HLS remux instead; the
+    // frame grab stays internal to the vision path.
+    if (!this.viewerDelayMs) this.emit("frame", jpeg.toString("base64"));
     const now = Date.now();
     if (now - run.lastLabel < this.config.labelIntervalMs) return;
     run.lastLabel = now;
@@ -267,18 +282,21 @@ class Pipeline extends EventEmitter {
     // in flight; only an explicit provider error blocks the mandatory chain.
     if (!labels) return;
     if (labels.error) throw asDependencyError("MiniMax", new Error(labels.error));
+    labels.capturedAt = capturedAt;
     this.emit("labels", labels);
     await this.acceptSignal("labels", labels, run);
   }
 
   async handleLabels(labels, run) {
     if (!this.isActive(run)) return;
+    labels.capturedAt = labels.capturedAt || Date.now();
     this.emit("labels", labels);
     await this.acceptSignal("labels", labels, run);
   }
 
-  async handleAudio(wavPath, run) {
+  async handleAudio(wavPath, capturedAt, run) {
     if (!this.isActive(run)) return;
+    capturedAt = capturedAt || Date.now();
     let text;
     try {
       text = await this.factories.transcribe(wavPath, this.config.stt);
@@ -286,20 +304,29 @@ class Pipeline extends EventEmitter {
       throw asDependencyError("STT", error);
     }
     if (!this.isActive(run) || !text || !text.trim()) return;
-    await this.acceptSignal("speech", { text }, run);
+    await this.acceptSignal("speech", { text, capturedAt }, run);
     if (!this.isActive(run)) return;
-    this.emit("transcript", text);
-    await this.say(text, run);
+    this.emit("transcript", { text, capturedAt, immediate: !this.viewerDelayMs });
+    await this.say(text, run, { capturedAt });
   }
 
-  async say(trigger, run = this.run) {
+  // `opts.capturedAt` is the stream moment the line belongs to; the renderer
+  // schedules its display and audio at capturedAt + viewer delay. Immediate
+  // lines (viewer chat replies, live mode) bypass that scheduling.
+  async say(trigger, run = this.run, opts = {}) {
     if (!this.isActive(run)) return;
     const out = await run.crew.speak(trigger);
     if (!this.isActive(run) || !out) return;
     if (out.line) {
+      const capturedAt = opts.capturedAt || run.lastCapturedAt || Date.now();
+      const immediate = Boolean(opts.immediate) || !this.viewerDelayMs;
+      out.capturedAt = capturedAt;
+      out.immediate = immediate;
       this.emit("commentary", out);
       const audio = await run.voices.speak(out.persona, out.line);
-      if (audio && this.isActive(run)) this.emit("audio", audio);
+      if (audio && this.isActive(run)) {
+        this.emit("audio", { ...audio, capturedAt, immediate });
+      }
     }
   }
 
@@ -318,10 +345,13 @@ class Pipeline extends EventEmitter {
     const run = this.run;
     if (!this.isActive(run) || !text.trim()) return Promise.resolve();
     const task = (async () => {
-      await this.acceptSignal("speech", { text }, run);
+      // The viewer types at their (delayed) display clock; the reply is a
+      // conversation, so it plays immediately rather than delay-scheduled.
+      const capturedAt = Date.now();
+      await this.acceptSignal("speech", { text, capturedAt }, run);
       if (!this.isActive(run)) return;
-      this.emit("transcript", text);
-      await this.say(text, run);
+      this.emit("transcript", { text, capturedAt, immediate: true });
+      await this.say(text, run, { capturedAt, immediate: true });
     })();
     return this.track(run, task);
   }

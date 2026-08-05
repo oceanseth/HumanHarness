@@ -2,9 +2,11 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const config = require("./src/config");
 const { Pipeline } = require("./src/pipeline");
+const { ViewerServer } = require("./src/viewer-server");
 
 let win;
 let pipeline;
+let viewerServer;
 let shutdownStarted = false;
 let shutdownComplete = false;
 
@@ -30,6 +32,13 @@ app.whenReady().then(() => {
   createWindow();
 
   pipeline = new Pipeline(config);
+  viewerServer = new ViewerServer();
+  pipeline.on("viewer", ({ hlsDir, playlist, delayMs }) => {
+    viewerServer.serve(hlsDir).then(
+      (base) => send("hh:viewer", { url: `${base}/${playlist}`, delayMs }),
+      (err) => send("hh:status", `viewer server failed: ${err.message}`),
+    );
+  });
   pipeline.on("frame", (b64) => send("hh:frame", b64));
   pipeline.on("labels", (labels) => send("hh:labels", labels));
   pipeline.on("transcript", (text) => send("hh:transcript", text));
@@ -44,6 +53,7 @@ app.whenReady().then(() => {
   ipcMain.handle("hh:config", () => ({
     twitchChannel: config.twitchChannel,
     mockIngest: config.mockIngest,
+    viewerDelayMs: pipeline.viewerDelayMs,
     sttProvider: config.stt.provider,
     maskyPersonas: config.maskyApiKey
       ? Object.entries(config.maskyAvatars)
@@ -62,6 +72,7 @@ app.on("before-quit", (event) => {
   event.preventDefault();
   if (shutdownStarted) return;
   shutdownStarted = true;
+  if (viewerServer) viewerServer.close();
   pipeline.stop().finally(() => {
     shutdownComplete = true;
     app.quit();

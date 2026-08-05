@@ -301,15 +301,97 @@ test("Pipeline skips a frame while MiniMax vision is already in flight", async (
   const run = pipeline.run;
 
   run.lastLabel = 0;
-  const firstFrame = pipeline.handleFrame(Buffer.from("first"), run);
+  const firstFrame = pipeline.handleFrame(Buffer.from("first"), Date.now(), run);
   await new Promise((resolve) => setImmediate(resolve));
   run.lastLabel = 0;
-  await pipeline.handleFrame(Buffer.from("second"), run);
+  await pipeline.handleFrame(Buffer.from("second"), Date.now(), run);
 
   assert.equal(pipeline.state, "running");
   assert.equal(calls, 2);
   visionGate.resolve();
   await firstFrame;
+  await pipeline.stop();
+});
+
+test("Pipeline schedules stream commentary on its captured moment and viewer chat immediately", async () => {
+  const harness = createHarness();
+  harness.factories.transcribe = async () => "nice dodge";
+  const pipeline = new Pipeline(
+    { ...config, twitchChannel: "somestreamer", viewerDelayMs: 90_000 },
+    harness.factories,
+  );
+  await pipeline.start();
+  const run = pipeline.run;
+  run.crew.speak = async () => ({ line: "what a play", persona: "hypecaster" });
+  run.voices.speak = async () => ({ audioUrl: "https://masky/clip.mp3", persona: "hypecaster" });
+
+  const commentary = [];
+  const audio = [];
+  const transcripts = [];
+  pipeline.on("commentary", (c) => commentary.push(c));
+  pipeline.on("audio", (a) => audio.push(a));
+  pipeline.on("transcript", (t) => transcripts.push(t));
+
+  const capturedAt = Date.now() - 6000;
+  await pipeline.handleAudio("seg-00001.wav", capturedAt, run);
+
+  assert.equal(transcripts[0].text, "nice dodge");
+  assert.equal(transcripts[0].capturedAt, capturedAt);
+  assert.equal(transcripts[0].immediate, false);
+  assert.equal(commentary[0].capturedAt, capturedAt);
+  assert.equal(commentary[0].immediate, false);
+  assert.equal(audio[0].audioUrl, "https://masky/clip.mp3");
+  assert.equal(audio[0].capturedAt, capturedAt);
+  assert.equal(audio[0].immediate, false);
+
+  await pipeline.userSays("hello crew");
+  const chat = commentary[1];
+  assert.equal(chat.immediate, true);
+  assert.equal(audio[1].immediate, true);
+  await pipeline.stop();
+});
+
+test("Pipeline stays immediate and keeps emitting frames when the viewer delay is off", async () => {
+  const harness = createHarness();
+  const pipeline = new Pipeline({ ...config, twitchChannel: "somestreamer" }, harness.factories);
+  await pipeline.start();
+  const run = pipeline.run;
+  run.crew.speak = async () => ({ line: "steady", persona: "strategist" });
+
+  const frames = [];
+  const commentary = [];
+  pipeline.on("frame", (b64) => frames.push(b64));
+  pipeline.on("commentary", (c) => commentary.push(c));
+
+  run.lastLabel = 0;
+  await pipeline.handleFrame(Buffer.from("jpeg"), Date.now(), run);
+  assert.equal(frames.length, 1);
+
+  await pipeline.userSays("hello");
+  assert.equal(commentary[0].immediate, true);
+  await pipeline.stop();
+});
+
+test("Pipeline suppresses live frames and forwards the viewer descriptor in delayed mode", async () => {
+  const harness = createHarness();
+  const pipeline = new Pipeline(
+    { ...config, twitchChannel: "somestreamer", viewerDelayMs: 90_000 },
+    harness.factories,
+  );
+  await pipeline.start();
+  const run = pipeline.run;
+
+  const frames = [];
+  const viewers = [];
+  pipeline.on("frame", (b64) => frames.push(b64));
+  pipeline.on("viewer", (v) => viewers.push(v));
+
+  run.lastLabel = Date.now();
+  await pipeline.handleFrame(Buffer.from("jpeg"), Date.now(), run);
+  assert.equal(frames.length, 0);
+
+  run.ingest.emit("viewer", { hlsDir: "/tmp/hh-hls-x", playlist: "live.m3u8" });
+  assert.deepEqual(viewers, [{ hlsDir: "/tmp/hh-hls-x", playlist: "live.m3u8", delayMs: 90_000 }]);
   await pipeline.stop();
 });
 

@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; media-src 'self' blob: https: http://127.0.0.1:*; connect-src 'self' http://127.0.0.1:*" />
   <title>HumanHarness</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -19,7 +19,11 @@
 
   <main>
     <section class="feed">
-      <img id="frame" alt="waiting for feed…" />
+      <div class="viewport">
+        <img id="frame" alt="waiting for feed…" />
+        <video id="stream" hidden playsinline></video>
+        <div id="viewerWait" class="viewer-wait" hidden></div>
+      </div>
       <div class="goal-row">
         <input id="goal" placeholder="Set a goal — e.g. beat this boss without healing items" />
         <button id="setGoal">Set goal</button>
@@ -41,6 +45,7 @@
     </section>
   </main>
 
+  <script src="../node_modules/hls.js/dist/hls.min.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

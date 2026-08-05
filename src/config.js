@@ -22,6 +22,16 @@ const positiveInt = (value, dflt, name) => {
   return parsed;
 };
 
+const nonNegativeInt = (value, dflt, name) => {
+  if (value === undefined || value.trim() === "") return dflt;
+  const normalized = value.trim();
+  const parsed = Number(normalized);
+  if (!/^\d+$/.test(normalized) || !Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new ConfigError(`${name} must be a non-negative integer`);
+  }
+  return parsed;
+};
+
 const sttProvider = (value) => {
   const provider = (value || "none").trim().toLowerCase() || "none";
   if (!STT_PROVIDERS.has(provider)) {
@@ -108,6 +118,11 @@ module.exports = {
     deepgramApiKey: process.env.DEEPGRAM_API_KEY || "",
     openaiApiKey: process.env.OPENAI_API_KEY || "",
   },
+
+  // Spectate delay: the viewer plays the stream this far behind the live edge,
+  // and crew clips are scheduled onto the moment they were captured for.
+  // 0 disables the delayed viewer (live frames + immediate commentary).
+  viewerDelayMs: nonNegativeInt(process.env.VIEWER_DELAY_MS, 120000, "VIEWER_DELAY_MS"),
 
   frameIntervalMs: positiveInt(process.env.FRAME_INTERVAL_MS, 500, "FRAME_INTERVAL_MS"),
   labelIntervalMs: positiveInt(process.env.LABEL_INTERVAL_MS, 2000, "LABEL_INTERVAL_MS"),
