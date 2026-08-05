@@ -1,0 +1,43 @@
+* { box-sizing: border-box; margin: 0; }
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #101418; color: #dfe6ee;
+  height: 100vh; display: flex; flex-direction: column;
+}
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: #171d24; border-bottom: 1px solid #262f3a;
+}
+h1 { font-size: 18px; letter-spacing: 0.04em; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: #7d8a99; margin: 10px 0 4px; }
+.badge { font-size: 11px; color: #8fd4a8; background: #16281d; border-radius: 10px; padding: 2px 10px; }
+.controls { margin-left: auto; display: flex; gap: 8px; }
+button {
+  background: #2b6cb0; color: #fff; border: 0; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer; font-size: 13px;
+}
+button:disabled { background: #33404e; cursor: default; }
+button[aria-pressed="true"] { background: #a83c3c; }
+main { flex: 1; display: grid; grid-template-columns: 1fr 380px; gap: 12px; padding: 12px 16px; min-height: 0; }
+.feed { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+#frame {
+  width: 100%; aspect-ratio: 16/9; object-fit: contain;
+  background: #000; border-radius: 8px; border: 1px solid #262f3a;
+}
+.goal-row { display: flex; gap: 8px; }
+.goal-row input {
+  flex: 1; background: #171d24; color: #dfe6ee;
+  border: 1px solid #2b3644; border-radius: 6px; padding: 7px 10px; font-size: 13px;
+}
+.labels { font-size: 12px; color: #9fb0c3; line-height: 1.5; overflow-y: auto; }
+.labels .tag { display: inline-block; background: #1d2733; border-radius: 4px; padding: 1px 7px; margin: 2px; }
+.crew { display: flex; flex-direction: column; min-height: 0; }
+.scroll { overflow-y: auto; flex: 1; min-height: 60px; background: #141a21; border: 1px solid #232d38; border-radius: 8px; padding: 8px; font-size: 13px; }
+.scroll.small { flex: 0 0 110px; font-size: 11px; color: #8b99a9; }
+.line { margin-bottom: 8px; }
+.line .who { font-weight: 600; margin-right: 6px; }
+.who.strategist { color: #63b3ed; }
+.who.historian { color: #d6bcfa; }
+.who.hypecaster { color: #f6ad55; }
+.who.scout { color: #68d391; }
+.lookup { font-size: 11px; color: #7d8a99; margin-left: 12px; }

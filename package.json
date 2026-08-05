@@ -1,0 +1,27 @@
+{
+  "name": "humanharness",
+  "version": "0.1.0",
+  "description": "Your feed. Your goals. Their commentary. A crew of AI personas riding a live video feed.",
+  "main": "main.js",
+  "bin": {
+    "humanharness": "bin/humanharness.js"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "npm run typecheck:guild && node --test",
+    "typecheck:guild": "tsc --noEmit -p guild-agents/tsconfig.json",
+    "replay": "node ./bin/humanharness.js replay"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@laserdata/laser-sdk": "^0.0.2",
+    "dotenv": "^17.4.2",
+    "falkordb": "^6.7.0",
+    "rocketride": "^1.3.0"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "typescript": "^5.7.2",
+    "zod": "^3.24.4"
+  }
+}
